@@ -10,6 +10,11 @@ from .groq_judge import GroqJudge
 from .gemini_judge import GeminiJudge
 
 
+def judge_failed(v: dict) -> bool:
+    r = v.get("reason", "")
+    return v["confidence"] == 0.0 and ("error" in r or "retries" in r or "unparseable" in r)
+
+
 def combine(groq: dict, gemini: dict) -> dict:
     g, m = groq["label"], gemini["label"]
     note = None
@@ -68,10 +73,18 @@ def main():
     gemini = GeminiJudge()
 
     with out_path.open("a", encoding="utf-8") as fh:
+        skipped = 0
         for i, row in enumerate(todo, 1):
             text = row["cleaned_text"]
             gj = groq.judge(text)
             mj = gemini.judge(text)
+
+            if judge_failed(gj) or judge_failed(mj):
+                skipped += 1
+                which = "groq" if judge_failed(gj) else "gemini"
+                print(f"[{i}/{len(todo)}] SKIP ({which} failed) - will retry on next run")
+                continue
+
             c = combine(gj, mj)
             row["lid_label"] = c["label"]
             row["lid_confidence"] = c["confidence"]
@@ -82,6 +95,9 @@ def main():
             fh.flush()
             print(f"[{i}/{len(todo)}] {c['label']:9s} conf={c['confidence']:.2f}"
                   f"{' note=' + c['note'] if c['note'] else ''}")
+
+        if skipped:
+            print(f"\n{skipped} skipped due to judge failure; re-run to retry them")
 
     tally(out_path, len(rows))
 

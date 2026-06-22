@@ -44,7 +44,7 @@ def _parse(text: str) -> dict:
 class GeminiJudge:
     name = "gemini"
 
-    def __init__(self, delay: float = 4.0, max_retries: int = 5):
+    def __init__(self, delay: float = 7.0, max_retries: int = 6):
         self.client = genai.Client(api_key=require("GEMINI_API_KEY"))
         self.delay = delay
         self.max_retries = max_retries
@@ -68,11 +68,12 @@ class GeminiJudge:
                 return _parse(resp.text or "")
             except Exception as e:
                 msg = str(e).lower()
-                wait = min(2 ** attempt, 30)
                 if any(k in msg for k in ("rate", "429", "resource", "quota", "503", "unavailable", "overloaded")):
+                    wait = min(15 + 15 * attempt, 75)
                     print(f"  [gemini] rate limited, waiting {wait}s")
                     time.sleep(wait)
                     continue
+                wait = min(2 ** attempt, 30)
                 print(f"  [gemini] error: {e}")
                 time.sleep(self.delay)
                 return {"label": "other", "confidence": 0.0, "reason": f"error: {str(e)[:40]}"}
