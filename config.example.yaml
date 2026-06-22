@@ -1,0 +1,15 @@
+user_agent: "purva-research-bot/0.1 (academic; contact: EMAIL)"
+output: "data/purva_pilot_candidates.jsonl"
+target_sentences: 500
+min_sentence_chars: 15
+source:
+  kind: news
+  source_name: "khabarbhojpuri"
+  section_urls:
+    - "https://khabarbhojpuri.com/category/entertainment/"
+    - "https://khabarbhojpuri.com/category/sports/"
+  link_selector: "h3.elementor-post__title a"
+  content_selector: ".elementor-widget-theme-post-content p"
+  request_delay: 2.0
+  max_articles: 40
+  respect_robots: true
