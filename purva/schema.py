@@ -26,6 +26,7 @@ class Record:
     scrape_timestamp: str = field(default_factory=_utc_now)
     lid_label: Optional[str] = None
     lid_confidence: Optional[float] = None
+    category: Optional[str] = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)

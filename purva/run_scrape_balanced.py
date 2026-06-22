@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import time
-import yaml
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 from .schema import Record, content_hash, JsonlWriter
 from .clean import clean_sentence, split_sentences, strip_pii, normalize
@@ -54,60 +56,51 @@ def main():
         print(f"  - {collector.category_label(c)}")
     print()
 
-    writer = JsonlWriter(cfg["output"])
     per_cat = defaultdict(int)
-    seen_hashes: set[str] = set()
     start = time.time()
 
-    for cat in cats:
-        label = collector.category_label(cat)
-        if per_cat[label] >= quota:
-            continue
-        for doc in collector.iter_category_articles(cat):
+    with JsonlWriter(cfg["output"]) as writer:
+        for cat in cats:
+            label = collector.category_label(cat)
             if per_cat[label] >= quota:
-                break
-            for sent in process_text(doc.text):
+                continue
+            for doc in collector.iter_category_articles(cat):
                 if per_cat[label] >= quota:
                     break
-                h = content_hash(sent)
-                if h in seen_hashes:
-                    continue
-                seen_hashes.add(h)
-                rec = Record(
-                    id=h,
-                    raw_text=sent,
-                    cleaned_text=sent,
-                    source_url=doc.url,
-                    source_name=doc.meta["source"],
-                    scrape_timestamp=_now(),
-                )
-                rec_d = rec.__dict__.copy()
-                rec_d["category"] = label
-                writer.append(rec_d)
-                per_cat[label] += 1
-        print(f"  [{label}] {per_cat[label]}/{quota}"
-              f"{' (archive exhausted)' if per_cat[label] < quota else ' done'}")
+                for sent in process_text(doc.text):
+                    if per_cat[label] >= quota:
+                        break
+                    rec = Record(
+                        id=content_hash(sent),
+                        raw_text=sent,
+                        cleaned_text=sent,
+                        source_url=doc.url,
+                        source_name=doc.meta["source"],
+                        scrape_timestamp=datetime.now(timezone.utc).isoformat(),
+                        category=label,
+                    )
+                    if writer.add(rec):
+                        per_cat[label] += 1
+            print(f"  [{label}] {per_cat[label]}/{quota}"
+                  f"{' (exhausted)' if per_cat[label] < quota else ' done'}")
+
+        total = writer.written
+        dupes = writer.skipped_dupes
 
     elapsed = time.time() - start
-    total = sum(per_cat.values())
     print(f"\n--- scrape summary ---")
-    print(f"categories     : {n}")
-    print(f"quota each      : {quota}")
-    print(f"total kept      : {total}/{args.total}")
+    print(f"categories      : {n}")
+    print(f"quota each       : {quota}")
+    print(f"total kept       : {total}/{args.total}")
+    print(f"dupes skipped    : {dupes}")
     for label, count in sorted(per_cat.items()):
         flag = "" if count >= quota else "  <-- short"
-        print(f"  {label:18s}: {count}{flag}")
+        print(f"  {label:24s}: {count}{flag}")
     short = [l for l, c in per_cat.items() if c < quota]
     if short:
-        print(f"\n{len(short)} categories under quota: {', '.join(short)}")
-        print("you can redistribute the shortfall to richer categories if desired")
-    print(f"elapsed         : {elapsed:.0f}s")
-    print(f"output          : {cfg['output']}")
-
-
-def _now() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+        print(f"\n{len(short)} categories under quota; redistribute if desired")
+    print(f"elapsed          : {elapsed:.0f}s")
+    print(f"output           : {cfg['output']}")
 
 
 if __name__ == "__main__":
