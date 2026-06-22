@@ -51,8 +51,9 @@ class GeminiJudge:
         self.config = types.GenerateContentConfig(
             system_instruction=SYSTEM,
             temperature=0,
-            max_output_tokens=80,
+            max_output_tokens=200,
             response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
 
     def judge(self, sentence: str) -> dict:
