@@ -6,6 +6,8 @@ data/
 config.yaml
 .env
 *.key
+config*.yaml
+!config*.example.yaml
 
 # python
 __pycache__/
