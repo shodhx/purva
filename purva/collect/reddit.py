@@ -52,7 +52,7 @@ class RedditCollector(Collector):
     def _post_ids(self) -> Iterator[tuple[str, str, str]]:
         after = None
         pulled = 0
-        base = f"https://www.reddit.com/r/{self.subreddit}/new.json"
+        base = f"https://old.reddit.com/r/{self.subreddit}/new.json"
         while pulled < self.max_posts:
             params = {"limit": 100}
             if after:
@@ -72,7 +72,7 @@ class RedditCollector(Collector):
                 break
 
     def _comments(self, post_id: str) -> list[str]:
-        url = f"https://www.reddit.com/r/{self.subreddit}/comments/{post_id}.json"
+        url = f"https://old.reddit.com/r/{self.subreddit}/comments/{post_id}.json"
         data = self._get(url)
         if not data or len(data) < 2:
             return []
@@ -96,7 +96,7 @@ class RedditCollector(Collector):
 
     def iter_documents(self) -> Iterator[Document]:
         for pid, title, body in self._post_ids():
-            url = f"https://www.reddit.com/r/{self.subreddit}/comments/{pid}"
+            url = f"https://old.reddit.com/r/{self.subreddit}/comments/{pid}"
             if title.strip():
                 yield Document(url=url, text=title,
                                meta={"source": self.name, "kind": "title"})
