@@ -174,6 +174,48 @@ class WordpressCollector(Collector):
                                    meta={"source": self.name,
                                          "category": self.category_label(cat_url)})
 
+
+    def _sitemap_index_posts(self) -> list[str]:
+        idx = self._get(urljoin(self.base_url + "/", "sitemap_index.xml"))
+        if not idx:
+            return []
+        soup = BeautifulSoup(idx, "xml")
+        maps = [loc.get_text(strip=True) for loc in soup.find_all("loc")
+                if "post-sitemap" in loc.get_text()]
+        urls: list[str] = []
+        for sm in maps:
+            body = self._get(sm)
+            if not body:
+                continue
+            ss = BeautifulSoup(body, "xml")
+            urls += [loc.get_text(strip=True) for loc in ss.find_all("loc")
+                     if not loc.find_parent("image")]
+        return list(dict.fromkeys(urls))
+
+    def iter_sitemap_articles(self, include: list[str], exclude: list[str]) -> Iterator[Document]:
+        import re as _re
+        inc = [_re.compile(p, _re.IGNORECASE) for p in include] if include else []
+        exc = [_re.compile(p, _re.IGNORECASE) for p in exclude] if exclude else []
+        urls = self._sitemap_index_posts()
+        print(f"  [sitemap] {len(urls)} post urls found")
+        kept_urls = []
+        for u in urls:
+            slug = u.rstrip("/").rsplit("/", 1)[-1]
+            if exc and any(p.search(slug) for p in exc):
+                continue
+            if inc and not any(p.search(slug) for p in inc):
+                continue
+            kept_urls.append(u)
+        print(f"  [sitemap] {len(kept_urls)} urls after slug filters")
+        for link in kept_urls:
+            html = self._get(link)
+            if not html:
+                continue
+            text = self._article_text(html)
+            if text.strip():
+                yield Document(url=link, text=text,
+                               meta={"source": self.name, "category": "sitemap"})
+
     def iter_documents(self) -> Iterator[Document]:
         for cat in self.discover_categories():
             yield from self.iter_category_articles(cat)
