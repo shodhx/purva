@@ -13,9 +13,8 @@ from .collect.ning import NingCollector
 
 
 def process_text(raw: str) -> list[str]:
-    norm = normalize(strip_pii(strip_markup(raw)))
     out = []
-    for s in split_sentences(norm):
+    for s in split_sentences(strip_pii(raw)):
         c = clean_sentence(s)
         if c:
             out.append(c)
