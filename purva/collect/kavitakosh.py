@@ -79,15 +79,24 @@ class KavitaKoshCollector(Collector):
             batch = titles[i:i + 10]
             data = self._get({
                 "action": "query",
-                "prop": "extracts",
-                "explaintext": 1,
-                "exsectionformat": "plain",
+                "prop": "revisions",
+                "rvprop": "content",
+                "rvslots": "main",
                 "titles": "|".join(batch),
             })
             if not data:
                 continue
             for page in data.get("query", {}).get("pages", {}).values():
-                text = page.get("extract", "")
+                revs = page.get("revisions") or []
+                if not revs:
+                    continue
+                rev = revs[0]
+                text = ""
+                slots = rev.get("slots")
+                if slots:
+                    text = slots.get("main", {}).get("*", "") or slots.get("main", {}).get("content", "")
+                if not text:
+                    text = rev.get("*", "") or rev.get("content", "")
                 if text and text.strip():
                     out[page.get("title", "")] = text
         return out
