@@ -79,12 +79,14 @@ class WikiCollector(Collector):
 
     def _all_titles(self) -> Iterator[str]:
         cont = None
+        page_n = 0
         while True:
             params = {
                 "action": "query",
                 "list": "allpages",
                 "apnamespace": 0,
                 "aplimit": 500,
+                "continue": "",
             }
             if cont:
                 params["apcontinue"] = cont
@@ -92,9 +94,12 @@ class WikiCollector(Collector):
             if not data:
                 break
             pages = data.get("query", {}).get("allpages", [])
+            page_n += 1
+            print(f"  [wiki] allpages batch {page_n}: {len(pages)} titles")
             for p in pages:
                 yield p.get("title", "")
-            cont = data.get("continue", {}).get("apcontinue")
+            cont = (data.get("continue", {}).get("apcontinue")
+                    or data.get("query-continue", {}).get("allpages", {}).get("apcontinue"))
             if not cont:
                 break
 

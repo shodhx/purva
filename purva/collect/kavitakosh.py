@@ -56,6 +56,7 @@ class KavitaKoshCollector(Collector):
                 "list": "categorymembers",
                 "cmtitle": category,
                 "cmlimit": 500,
+                "continue": "",
             }
             if cont:
                 params["cmcontinue"] = cont
@@ -68,7 +69,8 @@ class KavitaKoshCollector(Collector):
                     subcats.append(title)
                 elif m.get("ns") == 0:
                     pages.append(title)
-            cont = data.get("continue", {}).get("cmcontinue")
+            cont = (data.get("continue", {}).get("cmcontinue")
+                    or data.get("query-continue", {}).get("categorymembers", {}).get("cmcontinue"))
             if not cont:
                 break
         return pages, subcats
