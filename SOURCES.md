@@ -28,6 +28,11 @@
 - Kept: kahani/kavita/gazal/geet/katha/proverbs/laghu slugs; excluded wallpaper/film/actor content
 - Collected 2026-07-05: 7,337 sentences
 
+## Anjoria — assessed, excluded
+- URL: https://anjoria.com
+- Largest and longest-running Bhojpuri portal (archive to 2011); genuine Bhojpuri content confirmed manually
+- Site employs bot protection returning 403 to all scripted requests (including robots.txt); collection not pursued
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
