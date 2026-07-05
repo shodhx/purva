@@ -84,16 +84,16 @@ class NingCollector(Collector):
     def _topic_links(self, html: str) -> list[str]:
         soup = BeautifulSoup(html, "lxml")
         links = []
-        for a in soup.select(self.link_selector):
-            href = a.get("href")
-            if href and "/forum/topics/" in href:
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if "/forum/topics/" in href and ":Topic:" in href:
                 links.append(urljoin(self.group_url, href))
         return list(dict.fromkeys(links))
 
     def _post_text(self, html: str) -> str:
         soup = BeautifulSoup(html, "lxml")
         nodes = soup.select(self.content_selector)
-        return "\n".join(n.get_text(separator=" ", strip=True) for n in nodes)
+        return "\n".join(n.get_text(separator="\n", strip=True) for n in nodes)
 
     def _listing_pages(self) -> Iterator[str]:
         forum_url = self.group_url + "/forum"

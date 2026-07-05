@@ -25,6 +25,11 @@ _BOILERPLATE = [
     re.compile(r"^घटना\s+जनम\s+निधन"),
     re.compile(r"^संदर्भ$"),
     re.compile(r"thumb|right|left|px\b"),
+    re.compile(r"मौलिक\s*(?:व|एवं|और|आ)?\s*अप्रकाशित|अप्रकासित"),
+    re.compile(r"आवश्यक सूचना|सभी सदस्यों से अनुरोध"),
+    re.compile(r"क्लिक कर|Download OBO|Query/Feedback"),
+    re.compile(r"महत्वपूर्ण लिंक्स|ग़ज़ल की कक्षा|ओबीओ प्रबन्धन"),
+    re.compile(r"देवनागरी.*टाइप करने हेतु|साधन\s*-\s*[12]"),
 ]
 
 
