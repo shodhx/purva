@@ -48,6 +48,15 @@
 - Registers: poetry, stories, flash fiction, humor/satire (हँसी-मजाक), essays, songs — notably conversational/dialogue-rich informal Bhojpuri
 - Collected 2026-07-05: 2,851 sentences
 
+## OpenBooksOnline (Ning community — Bhojpuri Sahitya group)
+- URL: http://openbooksonline.com/group/bhojpuri_sahitya
+- robots.txt: checked 2026-07-05; content paths permitted
+- Method: bespoke Ning collector; forum topic walk with ?page=N pagination (249 discussions)
+- Content: member-posted verse and stories plus reader comments (conversational register)
+- Site chrome (rules notices, footer, ToS text) filtered via boilerplate patterns
+- Collected 2026-07-05: 3,483 sentences
+- Note: pure-Romanised comments dropped by Devanagari gate; deferred
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
