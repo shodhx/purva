@@ -57,6 +57,13 @@
 - Collected 2026-07-05: 3,483 sentences
 - Note: pure-Romanised comments dropped by Devanagari gate; deferred
 
+## BhojpuriNews.in (Blogger news portal)
+- URL: https://www.bhojpurinews.in
+- Platform: Blogger; collected via the public posts feed API (alt=json, start-index pagination)
+- Content: regional news (Ballia/Gorakhpur/Bihar), Bhojpuri cinema, sport, culture
+- Note: minority of posts are Hindi-language (~8% of sentences); deferred to LID stage
+- Collected 2026-07-05: 32,595 sentences from 3,087 posts
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
