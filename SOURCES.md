@@ -41,6 +41,13 @@
 - Collected 2026-07-05: 3,377 (रचना) + 18 new (गीत) = 3,395 sentences
 - Excluded: भोजपुरी रचनाकार (poet bios), भोजपुरी भाषा (meta-content about the language)
 
+## Sirijan (quarterly Bhojpuri e-magazine)
+- URL: https://sirijan.com
+- robots.txt: checked 2026-07-05; permitted
+- Method: category-crawl (tagDiv Newspaper theme), excluded e-magazine PDF and books categories
+- Registers: poetry, stories, flash fiction, humor/satire (हँसी-मजाक), essays, songs — notably conversational/dialogue-rich informal Bhojpuri
+- Collected 2026-07-05: 2,851 sentences
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
