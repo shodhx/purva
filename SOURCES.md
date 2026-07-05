@@ -33,6 +33,14 @@
 - Largest and longest-running Bhojpuri portal (archive to 2011); genuine Bhojpuri content confirmed manually
 - Site employs bot protection returning 403 to all scripted requests (including robots.txt); collection not pursued
 
+## Kavita Kosh (canonical verse)
+- URL: https://kavitakosh.org (MediaWiki core revisions API)
+- License: content copyrighted to named poets; pointer-only release
+- Method: category-tree walk from श्रेणी:भोजपुरी रचना and श्रेणी:भोजपुरी गीत
+- Note: गीत is largely a subset of रचना (only 18 new sentences beyond रचना)
+- Collected 2026-07-05: 3,377 (रचना) + 18 new (गीत) = 3,395 sentences
+- Excluded: भोजपुरी रचनाकार (poet bios), भोजपुरी भाषा (meta-content about the language)
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
