@@ -39,6 +39,7 @@ def main():
         content_selector=src["content_selector"],
         user_agent=cfg["user_agent"],
         category_paths=src.get("category_paths"),
+        category_exclude=src.get("category_exclude"),
         request_delay=src.get("request_delay", 2.0),
         max_pages_per_category=src.get("max_pages_per_category", 50),
         respect_robots=src.get("respect_robots", True),

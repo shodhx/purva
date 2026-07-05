@@ -23,6 +23,7 @@ class WordpressCollector(Collector):
         content_selector: str,
         user_agent: str,
         category_paths: list[str] | None = None,
+        category_exclude: list[str] | None = None,
         request_delay: float = 2.0,
         max_pages_per_category: int = 50,
         timeout: float = 20.0,
@@ -33,6 +34,7 @@ class WordpressCollector(Collector):
         self.link_selector = link_selector
         self.content_selector = content_selector
         self.category_paths = category_paths
+        self.category_exclude = [c.lower() for c in (category_exclude or [])]
         self.request_delay = request_delay
         self.max_pages_per_category = max_pages_per_category
         self.timeout = timeout
@@ -87,6 +89,11 @@ class WordpressCollector(Collector):
         keep = []
         for label, url in labels.items():
             if label in ("uncategorized",):
+                continue
+            from urllib.parse import unquote
+            decoded = unquote(label).lower()
+            if any(x in decoded for x in self.category_exclude):
+                print(f"  [cats] excluded by config: {decoded}")
                 continue
             is_parent = any(other != label and other.startswith(label + "/")
                             for other in labels)
