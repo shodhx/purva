@@ -36,6 +36,7 @@ def main():
         api_url=src["api_url"],
         user_agent=cfg["user_agent"],
         request_delay=src.get("request_delay", 0.5),
+        mode=src.get("mode", "random"),
     )
 
     print(f"target {args.total} sentences from {src['api_url']}\n")

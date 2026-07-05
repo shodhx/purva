@@ -18,6 +18,7 @@ class WikiCollector(Collector):
         user_agent: str,
         request_delay: float = 0.5,
         batch: int = 20,
+        mode: str = "random",
         timeout: float = 20.0,
         max_retries: int = 4,
     ):
@@ -25,6 +26,7 @@ class WikiCollector(Collector):
         self.api_url = api_url
         self.request_delay = request_delay
         self.batch = batch
+        self.mode = mode
         self.timeout = timeout
         self.max_retries = max_retries
         self.session = requests.Session()
@@ -75,7 +77,47 @@ class WikiCollector(Collector):
                 out[page.get("title", "")] = text
         return out
 
+    def _all_titles(self) -> Iterator[str]:
+        cont = None
+        while True:
+            params = {
+                "action": "query",
+                "list": "allpages",
+                "apnamespace": 0,
+                "aplimit": 500,
+            }
+            if cont:
+                params["apcontinue"] = cont
+            data = self._get(params)
+            if not data:
+                break
+            pages = data.get("query", {}).get("allpages", [])
+            for p in pages:
+                yield p.get("title", "")
+            cont = data.get("continue", {}).get("apcontinue")
+            if not cont:
+                break
+
+    def iter_all_documents(self) -> Iterator[Document]:
+        batch: list[str] = []
+        for title in self._all_titles():
+            if not title:
+                continue
+            batch.append(title)
+            if len(batch) >= self.batch:
+                for t, text in self._extracts(batch).items():
+                    yield Document(url=f"{self.api_url}?title={t}", text=text,
+                                   meta={"source": self.name, "category": "wikipedia"})
+                batch = []
+        if batch:
+            for t, text in self._extracts(batch).items():
+                yield Document(url=f"{self.api_url}?title={t}", text=text,
+                               meta={"source": self.name, "category": "wikipedia"})
+
     def iter_documents(self) -> Iterator[Document]:
+        if self.mode == "all":
+            yield from self.iter_all_documents()
+            return
         seen: set[str] = set()
         empty_streak = 0
         while empty_streak < 10:
