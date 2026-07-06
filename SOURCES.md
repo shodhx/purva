@@ -69,6 +69,11 @@
 - Register: opinion/editorial Bhojpuri (statehood debate, language advocacy) — pure Bhojpuri, zero Hindi bleed
 - Collected 2026-07-05: 144 sentences (complete blog)
 
+## parichaydasonbiharidhamaka.blogspot.com (Parichay Das literary blog)
+- Platform: Blogger (feed API); 7 posts, fully collected
+- Register: literary-critical essays / aesthetic philosophy — pure Bhojpuri, zero Hindi
+- Collected 2026-07-05: 723 sentences (complete blog)
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
