@@ -74,6 +74,12 @@
 - Register: literary-critical essays / aesthetic philosophy — pure Bhojpuri, zero Hindi
 - Collected 2026-07-05: 723 sentences (complete blog)
 
+## pandiji.blogspot.com (पहरूआ channel — Bhojpuri commentary + devotional)
+- Platform: Blogger (feed API); 275 posts, fully collected
+- Register: Bhojpuri news/commentary (बतकही, आपन बात) + devotional literary translation (Tulsi Ramayan भावार्थ)
+- Language: pure Bhojpuri; recurring channel-intro boilerplate deduped (~2,400 dupes)
+- Collected 2026-07-05: 10,450 sentences
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
