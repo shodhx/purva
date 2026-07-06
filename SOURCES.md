@@ -64,6 +64,11 @@
 - Note: minority of posts are Hindi-language (~8% of sentences); deferred to LID stage
 - Collected 2026-07-05: 32,595 sentences from 3,087 posts
 
+## bhojpuri.blogspot.com (pioneer-era Bhojpuri blog)
+- Platform: Blogger (feed API); 15 posts total, fully collected
+- Register: opinion/editorial Bhojpuri (statehood debate, language advocacy) — pure Bhojpuri, zero Hindi bleed
+- Collected 2026-07-05: 144 sentences (complete blog)
+
 ## Assessed and excluded
 - YouTube comments: manually assessed; genuine Bhojpuri <0.1% of comments on Bhojpuri-content videos; excluded as impractical
 - Reddit (r/Bhojpuriyas): public JSON endpoints return 403 (IP-level block) despite compliant User-Agent; collector retained in repo
