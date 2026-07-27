@@ -10,7 +10,7 @@
 | :--- | :---: | :---: | :--- |
 | **RESOLVED (Agreed Consensus)** | `84,225` | **92.10%** | Directly incorporated into training & evaluation benchmarks |
 | **DISAGREED (Active Learning Queue)** | `7,221` | **7.90%** | Routed to Layer 3 human annotation experts for adjudication |
-| **ERROR (Pipeline Failures)** | `0` | **0.00%** | Zero-fault engineering guarantee |
+| **PIPELINE PROCESSING FAILURES** | `0` | **0.00%** | Zero crashed or unparseable model responses (engineering reliability metric; distinct from annotation error rate, which is pending Layer 3 human evaluation) |
 | **Total Evaluated Corpus** | **`91,446`** | **100.00%** | Complete Bhojpuri repository analysis |
 
 ---

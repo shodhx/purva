@@ -122,8 +122,8 @@ By applying our 3-Class consensus rules and Dawid-Skene confidence routing, the 
 
 ### Deliverable Summary for Annotation Team:
 
-1. **`purva_l2_agreed.csv` (`84,225` rows):** High-confidence machine-consensus benchmark under 3-Class Dawid-Skene routing. Requires zero manual intervention, providing an immediate training corpus for downstream tasks.
-2. **`purva_l2_human_audit_sample.csv` (`842` rows):** Reproducible 1% control sample extracted from the agreed corpus (`--seed 42`). Human expert verification of this control sample confirms $>90\%$ Human-LLM alignment, satisfying empirical benchmark verification requirements.
+1. **`purva_l2_agreed.csv` (`84,225` rows):** High-confidence machine-consensus benchmark under 3-Class Dawid-Skene routing. Requires zero manual intervention, providing an immediate training corpus for downstream tasks. Note: the L2 pipeline achieved `0` processing failures across all 91,446 sentences, confirming full fault-tolerant execution. This metric captures pipeline reliability (parse/crash errors), not annotation correctness — the true annotation error rate will be established through human evaluation in Layer 3.
+2. **`purva_l2_human_audit_sample.csv` (`842` rows):** Reproducible 1% control sample extracted from the agreed corpus (`--seed 42`). Designated for independent verification by native Bhojpuri-speaking annotators to determine the empirical annotation accuracy of the machine-agreed benchmark.
 3. **`purva_l2_disagreed.csv` (`7,221` rows):** Tricky affective cases and model deadlocks where consensus could not be automatically established. Routing only these 7,221 sentences to Layer 3 human annotators reduces manual labor by **85%** compared to the 4-class taxonomy (`50,635` rows), making expert adjudication highly efficient and achievable within project timelines.
 
 ---
