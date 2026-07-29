@@ -14,7 +14,7 @@ This document establishes the official statistical and methodological evaluation
 
 During execution, a critical linguistic phenomenon was uncovered: while the 9B and 3B instruction-tuned models exhibited robust sentiment granularity, the 2B Indic-specialist model (**Sarvam AI**) experienced profound **class collapse**, predicting `objective/neutral` for 98.0% of the dataset.
 
-Rather than discarding the run, our pipeline's core architectural innovation—**Expectation-Maximization (EM) Dawid-Skene Aggregation** coupled with a **3-Class Taxonomy Collapse**—acted as an automated mathematical safeguard. This framework successfully isolated model bias, downgraded unreliable annotations, and established a clean **92.1% majority consensus across the 3-class corpus** (`84,225` sentences) without requiring expensive manual re-evaluation.
+Rather than discarding the run, our pipeline's core architectural innovation—**Expectation-Maximization (EM) Dawid-Skene Aggregation** coupled with a **3-Class Taxonomy Collapse**—acted as an automated mathematical safeguard. This framework successfully isolated model bias, downgraded unreliable annotations, and established a clean **83.2% Dawid-Skene weighted consensus across the 3-class corpus** (`76,103` sentences) without requiring expensive manual re-evaluation.
 
 ---
 
@@ -36,8 +36,9 @@ To align with standard NLP practices for low-resource sentiment analysis, we mer
 | **Gemma 2 9B vs. Qwen 2.5 3B Agreement** | `41.0%` ($\kappa = 0.185$) | **`52.7%` ($\kappa = 0.246$)** | Achieves **Moderate/Fair statistical agreement** between primary judges. |
 | **Unanimous 3-Model Consensus** | `6.4%` (5,891 rows) | **`29.9%` (27,334 rows)** | **+367% increase** in unanimous multi-family agreement. |
 | **Clean Majority Agreement (≥2/3 Judges)** | `68.6%` (62,688 rows) | **`92.1%` (84,225 rows)** | **Over 92% of the 91k corpus** achieves clean 2-out-of-3 majority agreement. |
+| **Dawid-Skene EM Weighted Consensus** | N/A | **`83.2%` (76,103 rows)** | Dawid-Skene routing with calibrated confidence thresholds (`ds_conf ≥ 0.60`, `H(X) ≤ 1.0`). |
 
-**Key Takeaway:** The 3-class collapse demonstrates that models agree heavily on emotional valence (`Positive`/`Negative`). By removing granular distinctions between dialogue and encyclopedic text, the pipeline delivers **84,225 high-confidence consensus rows** under majority voting and **62,688 rows** under strict 4-class majority voting.
+**Key Takeaway:** The 3-class collapse demonstrates that models agree heavily on emotional valence (`Positive`/`Negative`). While naive majority voting yields 84,225 resolved rows, applying Dawid-Skene EM with calibrated routing thresholds yields **76,103 high-confidence consensus rows** — a more conservative but methodologically rigorous partition that correctly routes ambiguous cases (where the 2B model's collapsed vote tips majority) to human review.
 
 ---
 
@@ -103,7 +104,7 @@ To provide transparent reporting, we present the complete pairwise inter-model a
 
 ## 5. Final Dataset Routing & Layer 3 (Human Annotation) Handoff
 
-By applying our 3-Class consensus rules and Dawid-Skene confidence routing, the `91,446` sentence corpus is cleanly partitioned for the final stage of the project:
+By applying our 3-Class consensus rules and Dawid-Skene EM confidence routing (thresholds: `ds_conf ≥ 0.60`, `H(X) ≤ 1.0`), the `91,446` sentence corpus is cleanly partitioned for the final stage of the project:
 
 ```
                   [ Total Scraped Bhojpuri Corpus: 91,446 Sentences ]
@@ -111,20 +112,20 @@ By applying our 3-Class consensus rules and Dawid-Skene confidence routing, the 
                         ┌─────────────────┴─────────────────┐
                         ▼                                   ▼
            [ L2 AUTO-RESOLVED CONSENSUS ]      [ L3 DISAGREED HUMAN QUEUE ]
-             84,225 Sentences (92.1%)             7,221 Sentences (7.9%)
+             76,103 Sentences (83.2%)            15,343 Sentences (16.8%)
                         │                                   │
          ┌──────────────┴──────────────┐                    ▼
          ▼                             ▼        [ HUMAN ANNOTATION QUEUE ]
 [ AGREED BENCHMARK ]         [ 1% CONTROL AUDIT ]   • Routed to L3 expert team
-  83,383 Sentences             842 Sentences        • Resolves subtle dialectal sarcasm,
+  75,342 Sentences             761 Sentences        • Resolves subtle dialectal sarcasm,
   Auto-Gold Standard           Human verification     double negatives, and idioms.
 ```
 
 ### Deliverable Summary for Annotation Team:
 
-1. **`purva_l2_agreed.csv` (`84,225` rows):** High-confidence machine-consensus benchmark under 3-Class Dawid-Skene routing. Requires zero manual intervention, providing an immediate training corpus for downstream tasks. Note: the L2 pipeline achieved `0` processing failures across all 91,446 sentences, confirming full fault-tolerant execution. This metric captures pipeline reliability (parse/crash errors), not annotation correctness — the true annotation error rate will be established through human evaluation in Layer 3.
-2. **`purva_l2_human_audit_sample.csv` (`842` rows):** Reproducible 1% control sample extracted from the agreed corpus (`--seed 42`). Designated for independent verification by native Bhojpuri-speaking annotators to determine the empirical annotation accuracy of the machine-agreed benchmark.
-3. **`purva_l2_disagreed.csv` (`7,221` rows):** Tricky affective cases and model deadlocks where consensus could not be automatically established. Routing only these 7,221 sentences to Layer 3 human annotators reduces manual labor by **85%** compared to the 4-class taxonomy (`50,635` rows), making expert adjudication highly efficient and achievable within project timelines.
+1. **`purva_l2_agreed.csv` (`76,103` rows):** High-confidence machine-consensus benchmark under 3-Class Dawid-Skene EM routing. Requires zero manual intervention, providing an immediate training corpus for downstream tasks. Note: the L2 pipeline achieved `0` processing failures across all 91,446 sentences, confirming full fault-tolerant execution. This metric captures pipeline reliability (parse/crash errors), not annotation correctness — the true annotation error rate will be established through human evaluation in Layer 3.
+2. **`purva_l2_human_audit_sample.csv` (`761` rows):** Reproducible 1% control sample extracted from the agreed corpus (`--seed 42`). Designated for independent verification by native Bhojpuri-speaking annotators to determine the empirical annotation accuracy of the machine-agreed benchmark.
+3. **`purva_l2_disagreed.csv` (`15,343` rows):** Affective cases and model deadlocks where Dawid-Skene confidence fell below the routing threshold. Routing these 15,343 sentences to Layer 3 human annotators reduces manual labor by **~70%** compared to the 4-class taxonomy (`50,635` rows), making expert adjudication efficient and achievable within project timelines.
 
 ---
 
@@ -132,4 +133,4 @@ By applying our 3-Class consensus rules and Dawid-Skene confidence routing, the 
 
 To curate the 91,446-sentence Bhojpuri sentiment corpus without prohibitive human labor costs, we deployed an autonomous 3-model committee comprising Google Gemma 2 (9B), Alibaba Qwen 2.5 (3B), and Sarvam AI Indic (2B). During empirical evaluation, we observed a profound 'Granularity Gap': while the 9B and 3B models successfully discriminated affective polarity (~24% positive, ~26% negative), the 2B Indic-specialist model suffered from class collapse, defaulting to neutral/factual reporting in 98.0% of evaluations.
 
-To prevent this class collapse from degrading benchmark quality, we abandoned naive majority voting in favor of Expectation-Maximization Dawid-Skene Aggregation. The EM algorithm autonomously identified the 2B model as an error-prone outlier on affective rows, dynamically reducing its mathematical weight and preserving the high-reliability consensus between the 9B and 3B instruction models. By collapsing ambiguous conversational and encyclopedic boundaries into a unified 3-class taxonomy (Positive, Negative, Neutral/Factual), inter-model agreement between primary judges reached 52.7% ($\kappa = 0.25$), establishing a clean majority consensus across 92.1% of the dataset (84,225 sentences) and isolating complex dialectal edge-cases (7,221 sentences) for Layer 3 human review.
+To prevent this class collapse from degrading benchmark quality, we abandoned naive majority voting in favor of Expectation-Maximization Dawid-Skene Aggregation. The EM algorithm autonomously identified the 2B model as an error-prone outlier on affective rows, dynamically reducing its mathematical weight and preserving the high-reliability consensus between the 9B and 3B instruction models. By collapsing ambiguous conversational and encyclopedic boundaries into a unified 3-class taxonomy (Positive, Negative, Neutral/Factual), inter-model agreement between primary judges reached 52.7% ($\kappa = 0.25$). With calibrated Dawid-Skene routing thresholds (`ds_conf ≥ 0.60`, `H(X) ≤ 1.0`), the pipeline established a weighted consensus across 83.2% of the dataset (76,103 sentences) and isolated 15,343 sentences (16.8%) for Layer 3 human review — a ~70% reduction in manual workload compared to the 4-class taxonomy.

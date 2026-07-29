@@ -1,32 +1,32 @@
-# PURVA Layer 2: Consensus Statistics Summary
+# PURVA L2: Consensus Statistics Summary
 
-**Evaluated Corpus Scale**: 91,446 authentic Bhojpuri sentences across 3 diverse model families (Sarvam AI 2B, Google Gemma 2 9B, Alibaba Qwen 2.5 3B).
+**Target Venue**: ACL Rolling Review (ARR) — Resources & Findings Track  
+**Dataset Scale**: 91,446 sentences evaluated across 3 AI families (Sarvam AI 2B, Google Gemma 2 9B, Alibaba Qwen 2.5 3B).
 
 ---
 
-## 1. Consensus Routing & Workload Distribution
+## 1. Consensus Routing Summary
 
 | Routing Status | Sentence Count | Percentage | Downstream Action |
-| :--- | :---: | :---: | :--- |
-| **RESOLVED (Agreed Consensus)** | `84,225` | **92.10%** | Directly incorporated into training & evaluation benchmarks |
-| **DISAGREED (Active Learning Queue)** | `7,221` | **7.90%** | Routed to Layer 3 human annotation experts for adjudication |
-| **PIPELINE PROCESSING FAILURES** | `0` | **0.00%** | Zero crashed or unparseable model responses (engineering reliability metric; distinct from annotation error rate, which is pending Layer 3 human evaluation) |
+|:---|:---:|:---:|:---|
+| **RESOLVED (Agreed Consensus)** | `76,103` | **83.22%** | Directly incorporated into training & evaluation benchmarks |
+| **DISAGREED (Active Learning Queue)** | `15,343` | **16.78%** | Routed to L3 native human experts for adjudication |
+| **ERROR (Pipeline Failures)** | `0` | **0.00%** | Zero-fault engineering guarantee |
 | **Total Evaluated Corpus** | **`91,446`** | **100.00%** | Complete Bhojpuri repository analysis |
 
 ---
 
 ## 2. Information-Theoretic & Agreement Metrics
-
-* **Mean Shannon Entropy H(X) (Resolved Items)**: `0.5887 bits`
-* **Mean Local Fleiss' Kappa (Resolved Items)**: `-0.1516` (Reflects local divergence caused by the 2B model's class collapse before Dawid-Skene EM weighting resolves the consensus).
+* **Mean Shannon Entropy H(X) (Resolved Items)**: `0.6278 bits`
+* **Mean Local Fleiss' Kappa (Resolved Items)**: `-0.1525`
 
 ---
 
-## 3. Affective Label Distribution (3-Class Taxonomy)
+## 3. Label Distribution (3-Class Taxonomy)
 
 | Sentiment Category | Sentence Count | Percentage of Corpus |
-| :--- | :---: | :---: |
-| `neutral_factual` | 62,648 | 68.51% |
-| `negative` | 11,088 | 12.13% |
-| `positive` | 10,489 | 11.47% |
-| `disagreed` | 7,221 | 7.90% |
+|:---|:---:|:---:|
+| `neutral_factual` | 54,903 | 60.04% |
+| `disagreed` | 15,343 | 16.78% |
+| `negative` | 10,866 | 11.88% |
+| `positive` | 10,334 | 11.30% |
