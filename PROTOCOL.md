@@ -9,7 +9,7 @@ PURVA is a budget-aware human+LLM consensus framework for low-resource dataset c
 
 ## 2. Language verification
 
-IndicLID (AI4Bharat, MIT license) is applied to all sentences in the corpus. Sentences receiving a non-Bhojpuri prediction are quarantined to a separate file, held out from downstream annotation and modeling. Before quarantine decisions are treated as final, a 500-sentence human-verified stratified sample (proportional by source) is drawn to measure IndicLID accuracy on this corpus.
+GlotLID v3 (cis-lmu/glotlid, Apache 2.0 license) is applied to all sentences in the corpus. GlotLID replaces the originally planned IndicLID (AI4Bharat): IndicLID covers only the 22 Eighth-Schedule Indian languages and has no Bhojpuri class, so it cannot perform the Bhojpuri-vs-Hindi separation this stage requires. GlotLID predictions are mapped to a four-way verdict: `bho_Deva` → `bhojpuri`; `hin_Deva` → `hindi`; `mai_Deva` → `maithili` (Bhojpuri's closest scheduled sibling; its confusion rate with Bhojpuri is itself a reportable finding); anything else → `other`. Sentences receiving a non-Bhojpuri verdict are quarantined to a separate file, held out from downstream annotation and modeling. Before quarantine decisions are treated as final, a 500-sentence human-verified stratified sample (proportional by source) is drawn to measure GlotLID accuracy on this corpus.
 
 ## 3. Label scheme
 
@@ -77,3 +77,4 @@ Only open weights are used, with pinned revisions. Prompts are stored verbatim i
 ## CHANGELOG
 
 - v1.0 (2026-08-03): initial pre-registration.
+- v1.1 (2026-08-03): §2 amended — IndicLID replaced with GlotLID; reason: IndicLID covers only Eighth-Schedule languages and has no Bhojpuri class; GlotLID provides bho_Deva/hin_Deva/mai_Deva as distinct classes.
