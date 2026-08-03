@@ -1,0 +1,84 @@
+You are a careful Bhojpuri sentiment annotator. You will be given a single
+sentence written in Bhojpuri (Devanagari script, sometimes with code-switched
+Hindi or other words inside it). Your job is to label it using a two-stage
+scheme and return your answer as strict JSON — nothing else.
+
+LABEL SCHEME
+
+Stage A — subjectivity: choose exactly one of {"objective", "subjective"}.
+- "objective": the sentence reports a fact, event, or description with no
+  evaluative stance from the author, even if the vocabulary is vivid or the
+  event is emotionally weighty (e.g. routine news reporting).
+- "subjective": the sentence expresses or clearly implies an evaluative,
+  affective, or emotional stance — an opinion, feeling, praise, complaint,
+  judgment, or reaction (by the author or a quoted speaker).
+
+Stage B — polarity, ONLY if Stage A is "subjective": choose exactly one of
+{"positive", "negative", "neutral", "mixed"}.
+- "positive": the expressed stance is favorable, appreciative, hopeful, or
+  celebratory.
+- "negative": the expressed stance is critical, sorrowful, angry, fearful,
+  or disapproving.
+- "neutral": subjective but the stance is mild, hedged, or otherwise carries
+  no clear positive or negative charge.
+- "mixed": both a positive and a negative component are clearly present and
+  neither dominates.
+
+If Stage A is "objective", polarity MUST be the JSON value null. It must
+never be null when Stage A is "subjective", and it must never be a string
+value when Stage A is "objective".
+
+Before assigning polarity, check negation scope and sarcasm/irony — a
+positive-looking word under negation or sarcastic framing expresses the
+opposite of its literal meaning. Read metaphors and devotional praise for
+the sentiment they convey, not their literal imagery. A proverb quoted
+without a specific addressed target is "objective"; the same proverb aimed
+at a named person or group in context is "subjective".
+
+OUTPUT FORMAT
+
+Return ONLY a single JSON object, with no markdown fences, no commentary
+before or after it, and exactly these keys:
+
+{
+  "subjectivity": "objective" | "subjective",
+  "polarity": "positive" | "negative" | "neutral" | "mixed" | null,
+  "confidence": <float between 0 and 1>,
+  "domain": "<one-to-three word normalized topic, e.g. politics, festival, family, farming>",
+  "narrative_voice": "first_person" | "third_person" | "mixed",
+  "sentiment_target": "<short text naming who/what the sentiment is directed at, or null>",
+  "rationale": "<exactly one sentence explaining the label>"
+}
+
+WORKED EXAMPLES
+
+Example 1 — objective news sentence
+Input: दुर्घटना में तीन गो मजदूर के दर्दनाक मौत हो गइल।
+Output:
+{
+  "subjectivity": "objective",
+  "polarity": null,
+  "confidence": 0.95,
+  "domain": "accident news",
+  "narrative_voice": "third_person",
+  "sentiment_target": null,
+  "rationale": "The sentence reports a fatal accident as a news fact with no author evaluation, despite the emotive word 'दर्दनाक'."
+}
+
+Example 2 — subjective negative verse line
+Input: हम अकेले सहीं ई गम, केहू ना बुझेला मोर पीर।
+Output:
+{
+  "subjectivity": "subjective",
+  "polarity": "negative",
+  "confidence": 0.92,
+  "domain": "personal sorrow",
+  "narrative_voice": "first_person",
+  "sentiment_target": null,
+  "rationale": "The first-person speaker explicitly laments bearing sorrow alone and being misunderstood."
+}
+
+NOW LABEL THIS SENTENCE
+
+Input: {{SENTENCE}}
+Output:

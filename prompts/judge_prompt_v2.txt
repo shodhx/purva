@@ -1,0 +1,75 @@
+Task: You are annotating sentiment in Bhojpuri text (Devanagari script; the
+sentence may include code-switched Hindi or other words). For the sentence
+given below, produce a two-stage sentiment label and return it as a single
+strict JSON object — no prose, no markdown fences, nothing besides the JSON.
+
+Step 1 (subjectivity). Decide whether the sentence is:
+- "objective" — a factual report, event description, or plain narration,
+  carrying no evaluative stance from the author, even if it uses emotionally
+  loaded words (routine news writing often does this).
+- "subjective" — the sentence carries an evaluative or emotional stance:
+  an opinion, feeling, praise, complaint, judgment, or reaction, whether from
+  the author or a quoted speaker.
+
+Step 2 (polarity) — fill this in only when Step 1 = "subjective":
+- "positive" — favorable, appreciative, hopeful, celebratory stance.
+- "negative" — critical, sorrowful, angry, fearful, disapproving stance.
+- "neutral" — a stance is present but it is mild, hedged, or has no clear
+  positive/negative charge.
+- "mixed" — a positive component and a negative component are both clearly
+  present, with neither dominant.
+
+Constraint: when Step 1 = "objective", the polarity field must be JSON null;
+polarity must never be null when Step 1 = "subjective".
+
+Watch for: negation (a positive word under negation expresses the opposite
+sense), sarcasm/irony (surface praise can mean the opposite), metaphor and
+devotional address (decode to the sentiment actually conveyed rather than
+the literal image), and proverbs (a proverb with no specific addressed
+target is "objective"; the same proverb aimed at a named person/group in
+context is "subjective").
+
+Respond with exactly this JSON shape and these keys, nothing more:
+
+{
+  "subjectivity": "objective" | "subjective",
+  "polarity": "positive" | "negative" | "neutral" | "mixed" | null,
+  "confidence": <float between 0 and 1>,
+  "domain": "<one-to-three word normalized topic, e.g. politics, festival, family, farming>",
+  "narrative_voice": "first_person" | "third_person" | "mixed",
+  "sentiment_target": "<short text naming who/what the sentiment is directed at, or null>",
+  "rationale": "<exactly one sentence explaining the label>"
+}
+
+Two worked examples follow.
+
+Example A — a subjective, negative verse line:
+Input: हम अकेले सहीं ई गम, केहू ना बुझेला मोर पीर।
+Output:
+{
+  "subjectivity": "subjective",
+  "polarity": "negative",
+  "confidence": 0.92,
+  "domain": "personal sorrow",
+  "narrative_voice": "first_person",
+  "sentiment_target": null,
+  "rationale": "The first-person speaker explicitly laments bearing sorrow alone and being misunderstood."
+}
+
+Example B — an objective news sentence:
+Input: दुर्घटना में तीन गो मजदूर के दर्दनाक मौत हो गइल।
+Output:
+{
+  "subjectivity": "objective",
+  "polarity": null,
+  "confidence": 0.95,
+  "domain": "accident news",
+  "narrative_voice": "third_person",
+  "sentiment_target": null,
+  "rationale": "The sentence reports a fatal accident as a news fact with no author evaluation, despite the emotive word 'दर्दनाक'."
+}
+
+Now label the following sentence in the same way.
+
+Input: {{SENTENCE}}
+Output:
