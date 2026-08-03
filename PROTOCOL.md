@@ -31,7 +31,7 @@ The committee comprises six open-weight models from six distinct organizations, 
 - Qwen2.5-14B-Instruct (Alibaba)
 - Mistral-Nemo-12B (Mistral)
 - Aya-Expanse-8B (Cohere)
-- Sarvam-1 or Airavata (Indic-specialist)
+- Airavata (AI4Bharat, Indic-specialist) — replaces the originally planned Sarvam-1, which is a base (non-instruction-tuned) model unsuited to structured JSON output; see CHANGELOG v1.3.
 
 The final roster is locked by a 1,000-sentence stratified pilot. Any judge with a JSON-contract failure rate above 5% is dropped from the roster; the minimum roster size is five. All judges use greedy decoding, temperature 0, and seed 42. HuggingFace revisions are pinned in this file at pilot time (to be recorded here once the pilot completes).
 
@@ -79,3 +79,4 @@ Only open weights are used, with pinned revisions. Prompts are stored verbatim i
 - v1.0 (2026-08-03): initial pre-registration.
 - v1.1 (2026-08-03): §2 amended — IndicLID replaced with GlotLID; reason: IndicLID covers only Eighth-Schedule languages and has no Bhojpuri class; GlotLID provides bho_Deva/hin_Deva/mai_Deva as distinct classes.
 - v1.2 (2026-08-03): sequencing amendment — LID human validation (§2) deferred to run concurrently with Phase-5 human annotation; no quarantine executed before validation scores are reviewed; lid_verdict retained as metadata; committee pilot may run on unquarantined data.
+- v1.3 (2026-08-03): §4 roster note — Sarvam-1 replaced by Airavata (instruction-tuned; Sarvam-1 is a base model unsuited to structured JSON output). Revisions to be pinned at pilot completion.

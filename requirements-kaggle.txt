@@ -1,0 +1,13 @@
+# Kaggle-only requirements for the judge committee runner (purva/committee/).
+# Kaggle notebooks already ship a working torch + CUDA build; do not pip
+# install torch here — reinstalling it tends to break the preloaded CUDA
+# wheel and is unnecessary on the provided T4x2 image.
+
+vllm>=0.6
+transformers>=4.44
+accelerate>=0.33
+huggingface_hub>=0.24
+
+# quantization backends used by purva/committee/models.py REGISTRY entries
+autoawq>=0.2.6      # for the Qwen2.5-14B-Instruct-AWQ judge
+bitsandbytes>=0.43  # for the remaining judges (4-bit)
