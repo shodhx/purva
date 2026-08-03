@@ -73,9 +73,9 @@ def process_corpus(input_path: str, output_path: str):
     print("-" * 30)
 
 if __name__ == "__main__":
-    # Point this to where your corpus_clean.jsonl is located
-    INPUT_FILE = "corpus_clean.jsonl"
-    OUTPUT_FILE = "corpus_filtered.jsonl"
+    
+    INPUT_FILE = "data\corpus_clean.jsonl"
+    OUTPUT_FILE = "data\corpus_filtered.jsonl"
     
     if not Path(INPUT_FILE).exists():
         print(f"Error: {INPUT_FILE} not found. Please check your path.")
