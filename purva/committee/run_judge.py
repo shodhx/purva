@@ -137,28 +137,78 @@ def try_parse(raw_text: str) -> dict | None:
     return obj if validate(obj) else None
 
 
-def build_llm(spec: ModelSpec):
+def resolve_quant(spec: ModelSpec, quant_mode: str) -> tuple[str, str]:
+    """Return (repo_id, quantization) to actually load for --quant {auto,awq,bnb}."""
+    if quant_mode == "awq":
+        if spec.awq_repo_id is not None:
+            return spec.awq_repo_id, "awq"
+        if spec.quantization == "awq":
+            return spec.repo_id, "awq"
+        raise SystemExit("--quant awq requested but no AWQ repo is configured for this model")
+
+    if quant_mode == "bnb":
+        if spec.quantization == "bitsandbytes-4bit":
+            return spec.repo_id, "bitsandbytes-4bit"
+        raise SystemExit(
+            "--quant bnb requested but this model has no bitsandbytes path configured "
+            f"(registry quantization={spec.quantization})"
+        )
+
+    # auto
+    if spec.awq_repo_id is not None:
+        return spec.awq_repo_id, "awq"
+    return spec.repo_id, spec.quantization
+
+
+def build_llm(spec: ModelSpec, repo_id: str, quantization: str):
     import torch
     from vllm import LLM
 
     tensor_parallel_size = 2 if torch.cuda.device_count() >= 2 else 1
 
+    print(
+        f"[config] repo_id={repo_id} quantization={quantization} "
+        f"max_model_len={spec.max_model_len} max_num_seqs={spec.max_num_seqs} "
+        f"tensor_parallel_size={tensor_parallel_size}"
+    )
+
     kwargs = dict(
-        model=spec.repo_id,
+        model=repo_id,
         revision=spec.revision,
         tensor_parallel_size=tensor_parallel_size,
         gpu_memory_utilization=0.90,
         max_model_len=spec.max_model_len,
+        max_num_seqs=spec.max_num_seqs,
+        swap_space=2,  # GB; lets residual preemption swap to CPU rather than recompute
         dtype=spec.dtype,
         seed=42,
     )
-    if spec.quantization == "awq":
+    if quantization == "awq":
         kwargs["quantization"] = "awq"
-    elif spec.quantization == "bitsandbytes-4bit":
+    elif quantization == "bitsandbytes-4bit":
         kwargs["quantization"] = "bitsandbytes"
         kwargs["load_format"] = "bitsandbytes"
 
     return LLM(**kwargs)
+
+
+def get_preemption_count(llm) -> int | None:
+    """Best-effort: vLLM's internal stats API differs across versions and
+    isn't part of its public contract, so this returns None rather than
+    raising if the expected attributes aren't found."""
+    try:
+        scheduler = llm.llm_engine.scheduler
+        schedulers = scheduler if isinstance(scheduler, (list, tuple)) else [scheduler]
+        total = 0
+        found = False
+        for s in schedulers:
+            count = getattr(s, "num_cumulative_preemption", None)
+            if count is not None:
+                total += count
+                found = True
+        return total if found else None
+    except Exception:
+        return None
 
 
 def build_sampling_params():
@@ -206,6 +256,8 @@ def main():
     ap.add_argument("--pilot", action="store_true")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--quant", choices=["auto", "awq", "bnb"], default="auto")
+    ap.add_argument("--bench", type=int, default=0, metavar="N", help="benchmark on the first N pilot sentences and exit; writes no shard")
     args = ap.parse_args()
 
     spec = REGISTRY[args.model]
@@ -228,6 +280,33 @@ def main():
             print(render(template, row["cleaned_text"]))
         return
 
+    if args.bench:
+        bench_path = Path("data/pilot_set.jsonl")
+        bench_rows = load_rows(bench_path)[: args.bench]
+        print(f"bench mode: {len(bench_rows)} sentences from {bench_path}")
+
+        repo_id, quantization = resolve_quant(spec, args.quant)
+        llm = build_llm(spec, repo_id, quantization)
+        sampling_params = build_sampling_params()
+
+        start = time.time()
+        results = process_chunk(llm, sampling_params, template, bench_rows)
+        elapsed = time.time() - start
+
+        processed = len(bench_rows)
+        rate = processed / elapsed if elapsed > 0 else 0.0
+        parse_failures = sum(1 for parsed, _ in results if parsed is None)
+        preemptions = get_preemption_count(llm)
+
+        print("\n=== Bench summary ===")
+        print(f"sentences: {processed}")
+        print(f"elapsed: {elapsed:.2f}s")
+        print(f"throughput: {rate:.3f} sentences/sec")
+        if processed:
+            print(f"parse failures: {parse_failures} ({parse_failures / processed * 100:.2f}%)")
+        print(f"preemptions: {preemptions if preemptions is not None else 'n/a (not exposed by this vLLM version)'}")
+        return
+
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{args.model}__{prompt_stem}.jsonl"
@@ -239,7 +318,8 @@ def main():
     if not todo:
         return
 
-    llm = build_llm(spec)
+    repo_id, quantization = resolve_quant(spec, args.quant)
+    llm = build_llm(spec, repo_id, quantization)
     sampling_params = build_sampling_params()
 
     processed = 0
