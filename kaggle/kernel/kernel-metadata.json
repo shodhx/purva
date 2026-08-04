@@ -1,0 +1,15 @@
+{
+  "id": "abhiprd20/purva-judge-committee",
+  "title": "purva-judge-committee",
+  "code_file": "main.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["abhiprd20/purva-corpus"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

@@ -265,21 +265,10 @@ def main():
     template = prompt_path.read_text(encoding="utf-8")
     prompt_stem = prompt_path.stem
 
-    input_path = Path("data/pilot_set.jsonl") if args.pilot else Path(args.input)
-    rows = load_rows(input_path)
-    if args.limit:
-        rows = rows[: args.limit]
-
-    if args.dry_run:
-        print(f"model={args.model} ({spec.repo_id})")
-        print(f"prompt={prompt_path}")
-        print(f"input={input_path} ({len(rows)} rows available)\n")
-        for row in rows[:3]:
-            print("=" * 80)
-            print(f"id={row['id']}")
-            print(render(template, row["cleaned_text"]))
-        return
-
+    # --bench is fully self-contained (reads only data/pilot_set.jsonl) and
+    # must not touch --input at all, so it's handled before the unconditional
+    # rows-load below — bench mode should never require the full corpus file
+    # to be present.
     if args.bench:
         bench_path = Path("data/pilot_set.jsonl")
         bench_rows = load_rows(bench_path)[: args.bench]
@@ -305,6 +294,21 @@ def main():
         if processed:
             print(f"parse failures: {parse_failures} ({parse_failures / processed * 100:.2f}%)")
         print(f"preemptions: {preemptions if preemptions is not None else 'n/a (not exposed by this vLLM version)'}")
+        return
+
+    input_path = Path("data/pilot_set.jsonl") if args.pilot else Path(args.input)
+    rows = load_rows(input_path)
+    if args.limit:
+        rows = rows[: args.limit]
+
+    if args.dry_run:
+        print(f"model={args.model} ({spec.repo_id})")
+        print(f"prompt={prompt_path}")
+        print(f"input={input_path} ({len(rows)} rows available)\n")
+        for row in rows[:3]:
+            print("=" * 80)
+            print(f"id={row['id']}")
+            print(render(template, row["cleaned_text"]))
         return
 
     output_dir = Path(args.output_dir)

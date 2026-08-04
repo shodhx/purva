@@ -37,6 +37,8 @@ The final roster is locked by a 1,000-sentence stratified pilot. Any judge with 
 
 A prompt-sensitivity study is run using 3 prompt paraphrases on a 10% stratified subsample. The full corpus is then labeled using one frozen prompt per judge.
 
+Committee labeling is scoped to a 20,000-sentence stratified subsample of the corpus (proportional across `register` × `text_type` × `source_name`, seed 42; see `purva/committee/make_label_subset.py`), not the full 90,207-sentence corpus. The full corpus remains the separately released raw resource; see CHANGELOG v1.4.
+
 ## 5. Aggregation
 
 The primary aggregation method is Dawid–Skene EM with covariate-stratified confusion matrices, stratified on `register` and `text_type`, initialized from majority vote with Laplace smoothing.
@@ -80,3 +82,4 @@ Only open weights are used, with pinned revisions. Prompts are stored verbatim i
 - v1.1 (2026-08-03): §2 amended — IndicLID replaced with GlotLID; reason: IndicLID covers only Eighth-Schedule languages and has no Bhojpuri class; GlotLID provides bho_Deva/hin_Deva/mai_Deva as distinct classes.
 - v1.2 (2026-08-03): sequencing amendment — LID human validation (§2) deferred to run concurrently with Phase-5 human annotation; no quarantine executed before validation scores are reviewed; lid_verdict retained as metadata; committee pilot may run on unquarantined data.
 - v1.3 (2026-08-03): §4 roster note — Sarvam-1 replaced by Airavata (instruction-tuned; Sarvam-1 is a base model unsuited to structured JSON output). Revisions to be pinned at pilot completion.
+- v1.4 (2026-08-04): committee labeling scoped to a 20,000-sentence stratified subsample; full corpus released as raw resource.

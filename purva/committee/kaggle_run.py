@@ -1,0 +1,204 @@
+"""Local driver that wraps the Kaggle CLI to run purva/committee/run_judge.py
+on Kaggle GPU from the terminal, instead of a human copying files through
+the notebook UI.
+
+Flow: copy kaggle/kernel/ to a scratch dir -> patch MODEL_NAME/BENCH_N/QUANT
+constants in the copy's main.py -> `kaggle kernels push` -> poll
+`kaggle kernels status` until terminal -> `kaggle kernels output` into
+data/committee/ (full run) or parse the downloaded log for the bench
+summary (bench mode). On failure, fetch and print the kernel log either way.
+
+The checked-in kaggle/kernel/main.py is never modified — only the scratch
+copy is patched, so every push is reproducible purely from this script's
+CLI arguments.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from .models import REGISTRY
+
+KERNEL_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "kaggle" / "kernel"
+KERNEL_REF = "abhiprd20/purva-judge-committee"
+
+TERMINAL_OK = {"complete"}
+TERMINAL_FAIL = {"error", "cancelacknowledged", "cancelrequested"}
+
+# The `kaggle` CLI opens downloaded log/output files with the platform default
+# text encoding (cp1252 on Windows) and crashes on non-ASCII content — pip's
+# unicode progress-bar characters, or (once real runs happen) Devanagari
+# rationale/domain text in shard output. Forcing UTF-8 mode in the child
+# `kaggle` process's env avoids that; PYTHONUTF8 must be set before a Python
+# process starts, so it's only applied to subprocesses, not this process
+# retroactively (see main() for this process's own stdout handling).
+_SUBPROCESS_ENV = {**os.environ, "PYTHONUTF8": "1"}
+
+
+def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    print(f"$ {' '.join(cmd)}")
+    kwargs.setdefault("env", _SUBPROCESS_ENV)
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **kwargs)
+
+
+def patch_main(text: str, model: str, bench: int, quant: str) -> str:
+    patched, n1 = re.subn(r'^MODEL_NAME = .*$', f'MODEL_NAME = "{model}"', text, count=1, flags=re.MULTILINE)
+    patched, n2 = re.subn(r'^BENCH_N = .*$', f'BENCH_N = {bench}', patched, count=1, flags=re.MULTILINE)
+    patched, n3 = re.subn(r'^QUANT = .*$', f'QUANT = "{quant}"', patched, count=1, flags=re.MULTILINE)
+    if (n1, n2, n3) != (1, 1, 1):
+        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3)}")
+    return patched
+
+
+def prepare_scratch_dir(model: str, bench: int, quant: str) -> Path:
+    scratch = Path(tempfile.mkdtemp(prefix="purva_kaggle_push_"))
+    for item in KERNEL_TEMPLATE_DIR.iterdir():
+        dest = scratch / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy(item, dest)
+
+    main_path = scratch / "main.py"
+    patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant)
+    main_path.write_text(patched, encoding="utf-8")
+
+    return scratch
+
+
+def push(scratch_dir: Path) -> None:
+    result = run(["kaggle", "kernels", "push", "-p", str(scratch_dir)])
+    print(result.stdout)
+    if result.returncode != 0:
+        print(result.stderr, file=sys.stderr)
+        raise SystemExit(f"kaggle kernels push failed (exit {result.returncode})")
+
+
+def poll_status(kernel_ref: str, timeout_s: int, poll_interval_s: int) -> str:
+    deadline = time.time() + timeout_s
+    consecutive_query_failures = 0
+
+    while time.time() < deadline:
+        result = run(["kaggle", "kernels", "status", kernel_ref])
+        text = (result.stdout + result.stderr).strip()
+
+        if result.returncode != 0:
+            consecutive_query_failures += 1
+            print(f"status query failed ({consecutive_query_failures}): {text}")
+            if consecutive_query_failures >= 10:
+                raise SystemExit("kaggle kernels status kept failing — giving up")
+            time.sleep(poll_interval_s)
+            continue
+
+        consecutive_query_failures = 0
+        lowered = text.lower()
+        print(f"status: {text}")
+
+        if any(s in lowered for s in TERMINAL_OK):
+            return "complete"
+        if any(s in lowered for s in TERMINAL_FAIL):
+            return "error"
+
+        time.sleep(poll_interval_s)
+
+    raise SystemExit(f"timed out after {timeout_s}s waiting for {kernel_ref} to finish")
+
+
+def fetch_output(kernel_ref: str, dest_dir: Path) -> Path:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    result = run(["kaggle", "kernels", "output", kernel_ref, "-p", str(dest_dir), "--force"])
+    print(result.stdout)
+    if result.returncode != 0:
+        print(result.stderr, file=sys.stderr)
+    return dest_dir
+
+
+def read_log_text(log_file: Path) -> str:
+    """Kaggle's downloaded .log file is a JSON array of
+    {"stream_name": "stdout"|"stderr", "time": float, "data": str} entries,
+    not plain text — reconstruct the actual console output from it. Falls
+    back to the raw file content if it isn't in that format."""
+    raw = log_file.read_text(encoding="utf-8", errors="replace")
+    try:
+        entries = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw
+    return "".join(e.get("data", "") for e in entries if isinstance(e, dict))
+
+
+def print_log(dest_dir: Path) -> None:
+    log_files = sorted(dest_dir.glob("*.log"))
+    if not log_files:
+        print(f"(no .log file found in {dest_dir})")
+        return
+    for log_file in log_files:
+        print(f"\n=== {log_file} ===")
+        print(read_log_text(log_file))
+
+
+def print_bench_summary(dest_dir: Path) -> None:
+    log_files = sorted(dest_dir.glob("*.log"))
+    summary_keys = ("[config]", "sentences:", "elapsed:", "throughput:", "parse failures:", "preemptions:")
+    found_any = False
+    for log_file in log_files:
+        for line in read_log_text(log_file).splitlines():
+            if any(line.strip().startswith(k) for k in summary_keys):
+                print(line)
+                found_any = True
+    if not found_any:
+        print("(bench summary lines not found in log — printing full log instead)")
+        print_log(dest_dir)
+
+
+def main():
+    # Downloaded log/shard content can contain Devanagari; make sure printing
+    # it can't crash this process on a non-UTF-8 console (e.g. Windows cp1252).
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", required=True, choices=sorted(REGISTRY))
+    ap.add_argument("--quant", choices=["auto", "awq", "bnb"], default="auto")
+    ap.add_argument("--bench", type=int, default=0, metavar="N", help="benchmark on the first N pilot sentences instead of a full run")
+    ap.add_argument("--timeout", type=int, default=2400, help="max seconds to wait for the kernel to finish")
+    ap.add_argument("--poll-interval", type=int, default=20)
+    ap.add_argument("--output-dir", default="data/committee")
+    args = ap.parse_args()
+
+    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant)
+    print(f"scratch push dir: {scratch_dir}")
+
+    try:
+        push(scratch_dir)
+        status = poll_status(KERNEL_REF, args.timeout, args.poll_interval)
+
+        mode = f"bench{args.bench}" if args.bench else "full"
+        fetch_dir = Path(args.output_dir) / "kaggle_out" / f"{args.model}__{mode}__{args.quant}"
+        fetch_output(KERNEL_REF, fetch_dir)
+
+        if status == "error":
+            print(f"\nkernel run FAILED for model={args.model} quant={args.quant} bench={args.bench}")
+            print_log(fetch_dir)
+            raise SystemExit(1)
+
+        print(f"\nkernel run complete for model={args.model} quant={args.quant} bench={args.bench}")
+        if args.bench:
+            print_bench_summary(fetch_dir)
+        else:
+            shard_files = list(fetch_dir.glob("committee/*.jsonl")) or list(fetch_dir.glob("*.jsonl"))
+            print(f"shards downloaded to {fetch_dir}: {[f.name for f in shard_files]}")
+    finally:
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
