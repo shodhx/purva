@@ -9,8 +9,14 @@ from pathlib import Path
 from .models import REGISTRY, ModelSpec
 
 BATCH_SIZE = 64
-MAX_TOKENS = 220
+MAX_TOKENS = 200
 FLUSH_EVERY = 50
+
+# Observed pilot failure mode: judges emit one valid JSON object, then keep
+# generating junk (a duplicate object, "Please provide..." loops, trailing
+# notes) until max_tokens — 99% parse failures and ~3x wasted compute. These
+# stop sequences halt generation as soon as that junk starts.
+STOP_SEQUENCES = ["}\n\n", "\n\n\n", " | ", "|{", "Note:", "Please provide"]
 
 SCHEMA_KEYS = {
     "subjectivity",
@@ -88,9 +94,44 @@ def validate(obj: dict) -> bool:
     return True
 
 
+def extract_first_json(text: str) -> str | None:
+    """Return the substring from the first '{' through its matching balanced
+    '}', ignoring braces that appear inside string literals. Returns None if
+    no balanced object is found (e.g. truncated output)."""
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def try_parse(raw_text: str) -> dict | None:
+    candidate = extract_first_json(strip_fences(raw_text))
+    if candidate is None:
+        return None
     try:
-        obj = json.loads(strip_fences(raw_text))
+        obj = json.loads(candidate)
     except (json.JSONDecodeError, ValueError):
         return None
     return obj if validate(obj) else None
@@ -123,7 +164,13 @@ def build_llm(spec: ModelSpec):
 def build_sampling_params():
     from vllm import SamplingParams
 
-    return SamplingParams(temperature=0.0, seed=42, max_tokens=MAX_TOKENS)
+    return SamplingParams(
+        temperature=0.0,
+        seed=42,
+        max_tokens=MAX_TOKENS,
+        stop=STOP_SEQUENCES,
+        include_stop_str_in_output=False,
+    )
 
 
 def process_chunk(llm, sampling_params, template: str, chunk: list[dict]) -> list[tuple[dict | None, str]]:
