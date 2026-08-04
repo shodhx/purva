@@ -1,10 +1,16 @@
 # Kaggle-only requirements for the judge committee runner (purva/committee/).
-# Kaggle notebooks already ship a working torch + CUDA build; do not pip
-# install torch here — reinstalling it tends to break the preloaded CUDA
-# wheel and is unnecessary on the provided T4x2 image.
+#
+# Kaggle's T4x2 image ships CUDA 12 drivers. vllm's latest releases (>=0.7)
+# pull a CUDA-13 build (torch wheels depending on libnvrtc.so.13), which
+# crashes on Kaggle T4 workers with ImportError: libnvrtc.so.13. Pin vllm to
+# a CUDA-12.1-compatible release, and pin torch/transformers to the versions
+# that release expects — this intentionally overrides Kaggle's preinstalled
+# torch build rather than relying on it, since that preinstalled build is
+# not guaranteed to match vllm's pinned CUDA-12 wheel.
 
-vllm>=0.6
-transformers>=4.44
+vllm==0.6.6.post1
+torch==2.5.1
+transformers==4.47.1
 accelerate>=0.33
 huggingface_hub>=0.24
 
