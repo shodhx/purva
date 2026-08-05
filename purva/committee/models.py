@@ -3,12 +3,18 @@
 Revisions are pinned to "main" until the 1,000-sentence pilot completes, at
 which point the resolved commit hashes are recorded here AND in PROTOCOL.md.
 
-max_model_len: measured against judge_prompt_v1.txt with a rendered sentence
-substituted in, prompts run ~700 tokens and outputs (MAX_TOKENS in
-run_judge.py) are capped at 200 tokens. 1024 gives headroom over the ~900
-actually needed while avoiding the KV-cache over-reservation that caused
-PreemptionMode.RECOMPUTE thrashing at max_model_len=2048 (0.18 sentences/sec
-on the Gemma pilot).
+max_model_len: the original ~700-token prompt estimate was wrong. Measured
+directly via prompt_token_ids on a real Kaggle run (Llama's tokenizer):
+judge_prompt_v1.txt with a rendered sentence substituted in actually runs
+~975-1043 tokens, not ~700 — at max_model_len=1024 the prompt alone was
+sometimes exceeding the budget, leaving zero-to-negative room for output
+(confirmed: one failure had prompt_tokens=1043 and an empty completion,
+several others had <50 tokens left and were truncated mid-object regardless
+of MAX_TOKENS in run_judge.py). 1536 gives real headroom over the ~1000-1100
+tokens actually needed (with margin for rationale-on runs and other
+tokenizers) while staying well clear of 2048, which caused the KV-cache
+over-reservation and PreemptionMode.RECOMPUTE thrashing (0.18 sentences/sec)
+seen on the Gemma pilot.
 """
 
 from __future__ import annotations
@@ -41,7 +47,7 @@ REGISTRY: dict[str, ModelSpec] = {
         repo_id="meta-llama/Llama-3.1-8B-Instruct",
         revision="main",  # PIN AT PILOT
         quantization="bitsandbytes-4bit",
-        max_model_len=1024,
+        max_model_len=1536,
         dtype="float16",
         # hugging-quants is the same org (HF + community, Meta-affiliated
         # quantization partners) that publishes the Qwen-AWQ-style official
@@ -52,7 +58,7 @@ REGISTRY: dict[str, ModelSpec] = {
         repo_id="google/gemma-2-9b-it",
         revision="main",  # PIN AT PILOT
         quantization="bitsandbytes-4bit",
-        max_model_len=1024,
+        max_model_len=1536,
         dtype="float16",
         awq_repo_id="hugging-quants/gemma-2-9b-it-AWQ-INT4",
     ),
@@ -64,14 +70,14 @@ REGISTRY: dict[str, ModelSpec] = {
         repo_id="Qwen/Qwen2.5-14B-Instruct-AWQ",
         revision="main",  # PIN AT PILOT
         quantization="awq",
-        max_model_len=1024,
+        max_model_len=1536,
         dtype="float16",
     ),
     "mistral-nemo-12b": ModelSpec(
         repo_id="mistralai/Mistral-Nemo-Instruct-2407",
         revision="main",  # PIN AT PILOT
         quantization="bitsandbytes-4bit",
-        max_model_len=1024,
+        max_model_len=1536,
         dtype="float16",
         # casperhansen is a prolific, widely-used community AWQ quantizer
         # (775k+ downloads/month on this repo at time of writing).
@@ -81,7 +87,7 @@ REGISTRY: dict[str, ModelSpec] = {
         repo_id="CohereForAI/aya-expanse-8b",
         revision="main",  # PIN AT PILOT
         quantization="bitsandbytes-4bit",
-        max_model_len=1024,
+        max_model_len=1536,
         dtype="float16",
         # Community (non-Cohere) AWQ build; confirmed to target this exact
         # base model and vLLM-compatible, with substantial (~197k/month)
@@ -100,7 +106,7 @@ REGISTRY: dict[str, ModelSpec] = {
         repo_id="ai4bharat/Airavata",
         revision="main",  # PIN AT PILOT
         quantization="bitsandbytes-4bit",
-        max_model_len=1024,
+        max_model_len=1536,
         dtype="float16",
     ),
 }
