@@ -239,12 +239,21 @@ def build_guided_schema(expect_rationale: bool) -> dict:
     JSON Schema can force "polarity is exactly null when and only when
     subjectivity is exactly objective" more precisely than this two-branch
     split without if/then.
+
+    Two more xgrammar-specific constraints (confirmed against real errors,
+    not guessed): it rejects numeric range keywords (minimum/maximum) as an
+    "advanced JSON schema feature" and falls back to the buggier "outlines"
+    backend, so confidence is left as a bare "number" here — the [0,1] range
+    is still enforced by validate() after parsing, just not by the grammar
+    itself. And list-form union types (`"type": ["string", "null"]`) crash
+    outlines' schema-to-regex compiler, so nullable fields use `anyOf`
+    instead, which both backends handle.
     """
     shared_props = {
-        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "confidence": {"type": "number"},
         "domain": {"type": "string"},
         "narrative_voice": {"enum": sorted(NARRATIVE_VOICE_VALUES)},
-        "sentiment_target": {"type": ["string", "null"]},
+        "sentiment_target": {"anyOf": [{"type": "string"}, {"type": "null"}]},
     }
     required_keys = ["subjectivity", "polarity", "confidence", "domain", "narrative_voice", "sentiment_target"]
     if expect_rationale:
