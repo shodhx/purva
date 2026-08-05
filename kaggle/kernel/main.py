@@ -95,7 +95,15 @@ def main():
 
     run(cmd, cwd=str(REPO_DIR))
 
-    if not BENCH_N:
+    if BENCH_N:
+        # No shard in bench mode, but any bench_failures_{model}.jsonl (see
+        # run_judge.py) needs to reach /kaggle/working to be downloadable
+        # via `kaggle kernels output`.
+        failures_src = data_dir / "committee" / f"bench_failures_{MODEL_NAME}.jsonl"
+        if failures_src.exists():
+            shutil.copy(failures_src, Path("/kaggle/working") / failures_src.name)
+            print(f"staged bench failures {failures_src} -> /kaggle/working/{failures_src.name}")
+    else:
         out_dir = Path("/kaggle/working/committee")
         out_dir.mkdir(exist_ok=True)
         for f in (data_dir / "committee").glob("*.jsonl"):

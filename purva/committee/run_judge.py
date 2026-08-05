@@ -219,7 +219,13 @@ def build_sampling_params():
         seed=42,
         max_tokens=MAX_TOKENS,
         stop=STOP_SEQUENCES,
-        include_stop_str_in_output=False,
+        # True, not False: with False, vLLM strips the entire matched stop
+        # string from the output. For the "}\n\n" stop sequence that deletes
+        # the JSON object's own closing brace, leaving unbalanced output that
+        # extract_first_json correctly (but unhelpfully) rejects. Keeping the
+        # stop string retains the brace; extract_first_json already discards
+        # anything after it via balanced-brace matching.
+        include_stop_str_in_output=True,
     )
 
 
@@ -287,12 +293,25 @@ def main():
         parse_failures = sum(1 for parsed, _ in results if parsed is None)
         preemptions = get_preemption_count(llm)
 
+        # Bench mode writes no shard, but failures still need to be
+        # diagnosable without a full run — persist raw_response for each
+        # failed row so the actual model output can be inspected.
+        failures_path = Path("data/committee") / f"bench_failures_{args.model}.jsonl"
+        if parse_failures:
+            failures_path.parent.mkdir(parents=True, exist_ok=True)
+            with failures_path.open("w", encoding="utf-8") as fh:
+                for row, (parsed, raw) in zip(bench_rows, results):
+                    if parsed is None:
+                        fh.write(json.dumps({"id": row["id"], "cleaned_text": row["cleaned_text"], "raw_response": raw}, ensure_ascii=False) + "\n")
+
         print("\n=== Bench summary ===")
         print(f"sentences: {processed}")
         print(f"elapsed: {elapsed:.2f}s")
         print(f"throughput: {rate:.3f} sentences/sec")
         if processed:
             print(f"parse failures: {parse_failures} ({parse_failures / processed * 100:.2f}%)")
+        if parse_failures:
+            print(f"failures written to {failures_path}")
         print(f"preemptions: {preemptions if preemptions is not None else 'n/a (not exposed by this vLLM version)'}")
         return
 
