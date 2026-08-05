@@ -9,7 +9,11 @@ from pathlib import Path
 from .models import REGISTRY, ModelSpec
 
 BATCH_SIZE = 64
-MAX_TOKENS = 200
+# 200 was marginal: guided decoding stops as soon as the JSON object closes,
+# so a higher cap costs nothing on well-behaved items and only helps items
+# whose sentiment_target/domain values (often Devanagari, which tokenizes
+# expensively) push length past the old budget.
+MAX_TOKENS = 320
 FLUSH_EVERY = 50
 
 # Observed pilot failure mode: judges emit one valid JSON object, then keep
@@ -309,17 +313,21 @@ def build_sampling_params(guided: bool, expect_rationale: bool):
 
 def process_chunk(
     llm, sampling_params, template: str, chunk: list[dict], expect_rationale: bool = True
-) -> list[tuple[dict | None, str]]:
+) -> list[tuple[dict | None, str, int]]:
+    """Returns (parsed_or_None, raw_text, prompt_token_count) per item.
+    prompt_token_count is carried through so failed items can report whether
+    the prompt itself is crowding max_model_len, not just guessed at."""
     prompts = [render(template, row["cleaned_text"], expect_rationale) for row in chunk]
     outputs = llm.generate(prompts, sampling_params)
     raws = [o.outputs[0].text for o in outputs]
+    prompt_tokens = [len(o.prompt_token_ids) for o in outputs]
 
-    results: list[tuple[dict | None, str] | None] = [None] * len(chunk)
+    results: list[tuple[dict | None, str, int] | None] = [None] * len(chunk)
     retry_idx = []
     for i, raw in enumerate(raws):
         parsed = try_parse(raw, expect_rationale)
         if parsed is not None:
-            results[i] = (parsed, raw)
+            results[i] = (parsed, raw, prompt_tokens[i])
         else:
             retry_idx.append(i)
 
@@ -328,7 +336,7 @@ def process_chunk(
         retry_outputs = llm.generate(retry_prompts, sampling_params)
         for i, out in zip(retry_idx, retry_outputs):
             raw2 = out.outputs[0].text
-            results[i] = (try_parse(raw2, expect_rationale), raw2)
+            results[i] = (try_parse(raw2, expect_rationale), raw2, len(out.prompt_token_ids))
 
     return results
 
@@ -372,19 +380,26 @@ def main():
 
         processed = len(bench_rows)
         rate = processed / elapsed if elapsed > 0 else 0.0
-        parse_failures = sum(1 for parsed, _ in results if parsed is None)
+        parse_failures = sum(1 for parsed, _, _ in results if parsed is None)
         preemptions = get_preemption_count(llm)
 
         # Bench mode writes no shard, but failures still need to be
-        # diagnosable without a full run — persist raw_response for each
-        # failed row so the actual model output can be inspected.
+        # diagnosable without a full run — persist raw_response (plus
+        # prompt_tokens, to check whether the prompt itself is crowding
+        # max_model_len) for each failed row so the actual model output can
+        # be inspected.
         failures_path = Path("data/committee") / f"bench_failures_{args.model}.jsonl"
         if parse_failures:
             failures_path.parent.mkdir(parents=True, exist_ok=True)
             with failures_path.open("w", encoding="utf-8") as fh:
-                for row, (parsed, raw) in zip(bench_rows, results):
+                for row, (parsed, raw, prompt_tokens) in zip(bench_rows, results):
                     if parsed is None:
-                        fh.write(json.dumps({"id": row["id"], "cleaned_text": row["cleaned_text"], "raw_response": raw}, ensure_ascii=False) + "\n")
+                        fh.write(json.dumps({
+                            "id": row["id"],
+                            "cleaned_text": row["cleaned_text"],
+                            "raw_response": raw,
+                            "prompt_tokens": prompt_tokens,
+                        }, ensure_ascii=False) + "\n")
 
         print("\n=== Bench summary ===")
         print(f"sentences: {processed}")
@@ -436,13 +451,14 @@ def main():
             chunk = todo[chunk_start : chunk_start + BATCH_SIZE]
             results = process_chunk(llm, sampling_params, template, chunk, args.rationale)
 
-            for row, (parsed, raw) in zip(chunk, results):
+            for row, (parsed, raw, prompt_tokens) in zip(chunk, results):
                 out_row = {"id": row["id"], "model": args.model, "prompt_variant": prompt_stem}
                 if parsed is not None:
                     out_row.update(parsed)
                 else:
                     out_row["parse_failed"] = True
                     out_row["raw_response"] = raw
+                    out_row["prompt_tokens"] = prompt_tokens
                     parse_failures += 1
                 fh.write(json.dumps(out_row, ensure_ascii=False) + "\n")
                 processed += 1
