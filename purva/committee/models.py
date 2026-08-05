@@ -40,6 +40,14 @@ class ModelSpec:
     # be confidently verified to exist — see --quant in run_judge.py for the
     # fallback behavior.
     awq_repo_id: str | None = None
+    # Per-model override: True everywhere except gemma-2-9b, where vLLM's
+    # prefix-caching attention kernel (forward_prefix / context_attention_fwd,
+    # Triton) crashes on T4/Turing with `OutOfResources: out of resource:
+    # shared memory, Required: 73728, Hardware limit: 65536` — confirmed
+    # against a real Kaggle run. Llama ran clean with prefix caching on the
+    # same hardware, so this looks specific to Gemma-2's alternating
+    # sliding-window/global attention pattern, not a blanket T4 limitation.
+    enable_prefix_caching: bool = True
 
 
 REGISTRY: dict[str, ModelSpec] = {
@@ -61,6 +69,7 @@ REGISTRY: dict[str, ModelSpec] = {
         max_model_len=1536,
         dtype="float16",
         awq_repo_id="hugging-quants/gemma-2-9b-it-AWQ-INT4",
+        enable_prefix_caching=False,
     ),
     "qwen2.5-14b": ModelSpec(
         # Official AWQ variant used for T4 (16GB) fit; the unquantized

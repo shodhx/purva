@@ -185,6 +185,7 @@ def build_llm(spec: ModelSpec, repo_id: str, quantization: str):
     print(
         f"[config] repo_id={repo_id} quantization={quantization} "
         f"max_model_len={spec.max_model_len} max_num_seqs={spec.max_num_seqs} "
+        f"enable_prefix_caching={spec.enable_prefix_caching} "
         f"tensor_parallel_size={tensor_parallel_size}"
     )
 
@@ -198,10 +199,11 @@ def build_llm(spec: ModelSpec, repo_id: str, quantization: str):
         swap_space=2,  # GB; lets residual preemption swap to CPU rather than recompute
         dtype=spec.dtype,
         seed=42,
-        # Every request shares an identical ~700-token prompt prefix (the
-        # frozen judge prompt) with only the sentence differing — cache it
-        # instead of recomputing per request.
-        enable_prefix_caching=True,
+        # Every request shares an identical ~1000-1100-token prompt prefix
+        # (the frozen judge prompt) with only the sentence differing — cache
+        # it instead of recomputing per request. Per-model override: see
+        # ModelSpec.enable_prefix_caching in models.py (off for gemma-2-9b).
+        enable_prefix_caching=spec.enable_prefix_caching,
         guided_decoding_backend="xgrammar",
     )
     if quantization == "awq":
