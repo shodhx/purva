@@ -47,7 +47,19 @@ _SUBPROCESS_ENV = {**os.environ, "PYTHONUTF8": "1"}
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     print(f"$ {' '.join(cmd)}")
     kwargs.setdefault("env", _SUBPROCESS_ENV)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **kwargs)
+    # This host intermittently fails to spawn a child process at the OS level
+    # (WinError 5 / access denied, unrelated to `kaggle` itself) — retry a
+    # few times rather than letting a transient spawn failure kill a
+    # multi-minute poll loop and orphan an already-running kernel session.
+    last_exc = None
+    for attempt in range(5):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **kwargs)
+        except OSError as e:
+            last_exc = e
+            print(f"  (subprocess spawn failed, attempt {attempt + 1}/5: {e})")
+            time.sleep(2)
+    raise last_exc
 
 
 def patch_main(text: str, model: str, bench: int, quant: str) -> str:
