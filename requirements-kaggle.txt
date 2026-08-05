@@ -14,6 +14,16 @@ transformers==4.47.1
 accelerate>=0.33
 huggingface_hub>=0.24
 
+# vllm 0.6.6.post1's xgrammar integration calls the low-level C++ binding
+# xgr_core.TokenizerInfo.from_huggingface directly. xgrammar removed that
+# method from the core binding in 0.1.15 (moved to the pure-Python wrapper),
+# which crashes vllm 0.6.6.post1 with AttributeError: type object
+# 'TokenizerInfo' has no attribute 'from_huggingface' the moment guided
+# decoding is used (confirmed against a real Kaggle run; see
+# vllm-project/vllm#16500). vllm's own constraint is only xgrammar>=0.1.6,
+# so an unpinned install grabs whatever is latest and breaks. Pin below 0.1.15.
+xgrammar==0.1.13
+
 # quantization backends used by purva/committee/models.py REGISTRY entries
 autoawq>=0.2.6      # for the Qwen2.5-14B-Instruct-AWQ judge
 bitsandbytes>=0.43  # for the remaining judges (4-bit)
