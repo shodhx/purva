@@ -62,16 +62,18 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     raise last_exc
 
 
-def patch_main(text: str, model: str, bench: int, quant: str) -> str:
+def patch_main(text: str, model: str, bench: int, quant: str, guided: bool, rationale: bool) -> str:
     patched, n1 = re.subn(r'^MODEL_NAME = .*$', f'MODEL_NAME = "{model}"', text, count=1, flags=re.MULTILINE)
     patched, n2 = re.subn(r'^BENCH_N = .*$', f'BENCH_N = {bench}', patched, count=1, flags=re.MULTILINE)
     patched, n3 = re.subn(r'^QUANT = .*$', f'QUANT = "{quant}"', patched, count=1, flags=re.MULTILINE)
-    if (n1, n2, n3) != (1, 1, 1):
-        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3)}")
+    patched, n4 = re.subn(r'^GUIDED = .*$', f'GUIDED = {guided}', patched, count=1, flags=re.MULTILINE)
+    patched, n5 = re.subn(r'^RATIONALE = .*$', f'RATIONALE = {rationale}', patched, count=1, flags=re.MULTILINE)
+    if (n1, n2, n3, n4, n5) != (1, 1, 1, 1, 1):
+        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3, n4, n5)}")
     return patched
 
 
-def prepare_scratch_dir(model: str, bench: int, quant: str) -> Path:
+def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, rationale: bool) -> Path:
     scratch = Path(tempfile.mkdtemp(prefix="purva_kaggle_push_"))
     for item in KERNEL_TEMPLATE_DIR.iterdir():
         dest = scratch / item.name
@@ -81,7 +83,7 @@ def prepare_scratch_dir(model: str, bench: int, quant: str) -> Path:
             shutil.copy(item, dest)
 
     main_path = scratch / "main.py"
-    patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant)
+    patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant, guided, rationale)
     main_path.write_text(patched, encoding="utf-8")
 
     return scratch
@@ -159,7 +161,7 @@ def print_log(dest_dir: Path) -> None:
 
 def print_bench_summary(dest_dir: Path) -> None:
     log_files = sorted(dest_dir.glob("*.log"))
-    summary_keys = ("[config]", "sentences:", "elapsed:", "throughput:", "parse failures:", "preemptions:")
+    summary_keys = ("[config]", "sentences:", "elapsed:", "throughput:", "parse failures:", "failures written to", "preemptions:")
     found_any = False
     for log_file in log_files:
         for line in read_log_text(log_file).splitlines():
@@ -181,12 +183,14 @@ def main():
     ap.add_argument("--model", required=True, choices=sorted(REGISTRY))
     ap.add_argument("--quant", choices=["auto", "awq", "bnb"], default="auto")
     ap.add_argument("--bench", type=int, default=0, metavar="N", help="benchmark on the first N pilot sentences instead of a full run")
+    ap.add_argument("--guided", action=argparse.BooleanOptionalAction, default=True)
+    ap.add_argument("--rationale", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--timeout", type=int, default=2400, help="max seconds to wait for the kernel to finish")
     ap.add_argument("--poll-interval", type=int, default=20)
     ap.add_argument("--output-dir", default="data/committee")
     args = ap.parse_args()
 
-    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant)
+    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant, args.guided, args.rationale)
     print(f"scratch push dir: {scratch_dir}")
 
     try:
@@ -194,7 +198,8 @@ def main():
         status = poll_status(KERNEL_REF, args.timeout, args.poll_interval)
 
         mode = f"bench{args.bench}" if args.bench else "full"
-        fetch_dir = Path(args.output_dir) / "kaggle_out" / f"{args.model}__{mode}__{args.quant}"
+        tag = f"{mode}__{args.quant}__g{int(args.guided)}r{int(args.rationale)}"
+        fetch_dir = Path(args.output_dir) / "kaggle_out" / f"{args.model}__{tag}"
         fetch_output(KERNEL_REF, fetch_dir)
 
         if status == "error":

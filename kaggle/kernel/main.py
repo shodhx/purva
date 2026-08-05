@@ -14,10 +14,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# --- PATCHABLE CONSTANTS: kaggle_run.py rewrites these three lines ---
+# --- PATCHABLE CONSTANTS: kaggle_run.py rewrites these lines ---
 MODEL_NAME = "llama-3.1-8b"
 BENCH_N = 0  # 0 = full run over INPUT_FILE; >0 = bench mode, first N pilot sentences, writes no shard
 QUANT = "auto"  # auto | awq | bnb
+GUIDED = True  # xgrammar guided decoding, constrains output to the judge JSON schema
+RATIONALE = True  # include the rationale field in the schema/prompt
 # --- END PATCHABLE CONSTANTS ---
 
 REPO_URL = "https://github.com/shodhx/purva.git"
@@ -88,6 +90,8 @@ def main():
             print(f"skip (not found anywhere under {KAGGLE_INPUT_ROOT}): {name}")
 
     cmd = [sys.executable, "-m", "purva.committee.run_judge", "--model", MODEL_NAME, "--quant", QUANT]
+    cmd += ["--guided"] if GUIDED else ["--no-guided"]
+    cmd += ["--rationale"] if RATIONALE else ["--no-rationale"]
     if BENCH_N:
         cmd += ["--bench", str(BENCH_N)]
     else:

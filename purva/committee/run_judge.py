@@ -18,18 +18,26 @@ FLUSH_EVERY = 50
 # stop sequences halt generation as soon as that junk starts.
 STOP_SEQUENCES = ["}\n\n", "\n\n\n", " | ", "|{", "Note:", "Please provide"]
 
-SCHEMA_KEYS = {
+BASE_SCHEMA_KEYS = {
     "subjectivity",
     "polarity",
     "confidence",
     "domain",
     "narrative_voice",
     "sentiment_target",
-    "rationale",
 }
+RATIONALE_KEY = "rationale"
 SUBJECTIVITY_VALUES = {"objective", "subjective"}
 POLARITY_VALUES = {"positive", "negative", "neutral", "mixed"}
 NARRATIVE_VOICE_VALUES = {"first_person", "third_person", "mixed"}
+
+# Appended to the rendered prompt at runtime when --no-rationale is set. The
+# checked-in prompts/*.txt files stay byte-identical (frozen per
+# prompts/README.md) — this is a small addendum, not an edit to those files.
+RATIONALE_OFF_ADDENDUM = (
+    "\n\nFor this run, omit the \"rationale\" field entirely — do not "
+    "include it in the JSON object at all."
+)
 
 FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
 
@@ -57,8 +65,11 @@ def load_done_ids(path: Path) -> set:
     return done
 
 
-def render(template: str, sentence: str) -> str:
-    return template.replace("{{SENTENCE}}", sentence.replace("\n", " ").strip())
+def render(template: str, sentence: str, expect_rationale: bool = True) -> str:
+    text = template.replace("{{SENTENCE}}", sentence.replace("\n", " ").strip())
+    if not expect_rationale:
+        text += RATIONALE_OFF_ADDENDUM
+    return text
 
 
 def strip_fences(text: str) -> str:
@@ -67,8 +78,9 @@ def strip_fences(text: str) -> str:
     return m.group(1).strip() if m else t
 
 
-def validate(obj: dict) -> bool:
-    if not isinstance(obj, dict) or set(obj.keys()) != SCHEMA_KEYS:
+def validate(obj: dict, expect_rationale: bool = True) -> bool:
+    expected_keys = BASE_SCHEMA_KEYS | ({RATIONALE_KEY} if expect_rationale else set())
+    if not isinstance(obj, dict) or set(obj.keys()) != expected_keys:
         return False
     if obj.get("subjectivity") not in SUBJECTIVITY_VALUES:
         return False
@@ -89,7 +101,7 @@ def validate(obj: dict) -> bool:
     target = obj.get("sentiment_target")
     if target is not None and not isinstance(target, str):
         return False
-    if not isinstance(obj.get("rationale"), str) or not obj["rationale"].strip():
+    if expect_rationale and (not isinstance(obj.get("rationale"), str) or not obj["rationale"].strip()):
         return False
     return True
 
@@ -126,7 +138,7 @@ def extract_first_json(text: str) -> str | None:
     return None
 
 
-def try_parse(raw_text: str) -> dict | None:
+def try_parse(raw_text: str, expect_rationale: bool = True) -> dict | None:
     candidate = extract_first_json(strip_fences(raw_text))
     if candidate is None:
         return None
@@ -134,7 +146,7 @@ def try_parse(raw_text: str) -> dict | None:
         obj = json.loads(candidate)
     except (json.JSONDecodeError, ValueError):
         return None
-    return obj if validate(obj) else None
+    return obj if validate(obj, expect_rationale) else None
 
 
 def resolve_quant(spec: ModelSpec, quant_mode: str) -> tuple[str, str]:
@@ -182,6 +194,11 @@ def build_llm(spec: ModelSpec, repo_id: str, quantization: str):
         swap_space=2,  # GB; lets residual preemption swap to CPU rather than recompute
         dtype=spec.dtype,
         seed=42,
+        # Every request shares an identical ~700-token prompt prefix (the
+        # frozen judge prompt) with only the sentence differing — cache it
+        # instead of recomputing per request.
+        enable_prefix_caching=True,
+        guided_decoding_backend="xgrammar",
     )
     if quantization == "awq":
         kwargs["quantization"] = "awq"
@@ -211,10 +228,53 @@ def get_preemption_count(llm) -> int | None:
         return None
 
 
-def build_sampling_params():
+def build_guided_schema(expect_rationale: bool) -> dict:
+    """JSON schema for xgrammar-guided decoding, expressed as two mutually
+    exclusive object shapes (anyOf) rather than if/then — xgrammar's
+    JSON-schema-to-grammar compiler supports anyOf/const/enum reliably but
+    not conditional if/then, so this is "the null-iff-objective relationship
+    expressed as far as the schema language allows": one branch requires
+    subjectivity="objective" with polarity=null, the other requires
+    subjectivity="subjective" with polarity in the real enum. Nothing in
+    JSON Schema can force "polarity is exactly null when and only when
+    subjectivity is exactly objective" more precisely than this two-branch
+    split without if/then.
+    """
+    shared_props = {
+        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "domain": {"type": "string"},
+        "narrative_voice": {"enum": sorted(NARRATIVE_VOICE_VALUES)},
+        "sentiment_target": {"type": ["string", "null"]},
+    }
+    required_keys = ["subjectivity", "polarity", "confidence", "domain", "narrative_voice", "sentiment_target"]
+    if expect_rationale:
+        shared_props[RATIONALE_KEY] = {"type": "string"}
+        required_keys.append(RATIONALE_KEY)
+
+    def branch(subjectivity: str, polarity_schema: dict) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "subjectivity": {"const": subjectivity},
+                "polarity": polarity_schema,
+                **shared_props,
+            },
+            "required": required_keys,
+            "additionalProperties": False,
+        }
+
+    return {
+        "anyOf": [
+            branch("objective", {"type": "null"}),
+            branch("subjective", {"enum": sorted(POLARITY_VALUES)}),
+        ]
+    }
+
+
+def build_sampling_params(guided: bool, expect_rationale: bool):
     from vllm import SamplingParams
 
-    return SamplingParams(
+    kwargs = dict(
         temperature=0.0,
         seed=42,
         max_tokens=MAX_TOKENS,
@@ -228,16 +288,27 @@ def build_sampling_params():
         include_stop_str_in_output=True,
     )
 
+    if guided:
+        from vllm.sampling_params import GuidedDecodingParams
 
-def process_chunk(llm, sampling_params, template: str, chunk: list[dict]) -> list[tuple[dict | None, str]]:
-    prompts = [render(template, row["cleaned_text"]) for row in chunk]
+        kwargs["guided_decoding"] = GuidedDecodingParams(
+            json=build_guided_schema(expect_rationale), backend="xgrammar"
+        )
+
+    return SamplingParams(**kwargs)
+
+
+def process_chunk(
+    llm, sampling_params, template: str, chunk: list[dict], expect_rationale: bool = True
+) -> list[tuple[dict | None, str]]:
+    prompts = [render(template, row["cleaned_text"], expect_rationale) for row in chunk]
     outputs = llm.generate(prompts, sampling_params)
     raws = [o.outputs[0].text for o in outputs]
 
     results: list[tuple[dict | None, str] | None] = [None] * len(chunk)
     retry_idx = []
     for i, raw in enumerate(raws):
-        parsed = try_parse(raw)
+        parsed = try_parse(raw, expect_rationale)
         if parsed is not None:
             results[i] = (parsed, raw)
         else:
@@ -248,7 +319,7 @@ def process_chunk(llm, sampling_params, template: str, chunk: list[dict]) -> lis
         retry_outputs = llm.generate(retry_prompts, sampling_params)
         for i, out in zip(retry_idx, retry_outputs):
             raw2 = out.outputs[0].text
-            results[i] = (try_parse(raw2), raw2)
+            results[i] = (try_parse(raw2, expect_rationale), raw2)
 
     return results
 
@@ -264,6 +335,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--quant", choices=["auto", "awq", "bnb"], default="auto")
     ap.add_argument("--bench", type=int, default=0, metavar="N", help="benchmark on the first N pilot sentences and exit; writes no shard")
+    ap.add_argument("--guided", action=argparse.BooleanOptionalAction, default=True, help="constrain generation to the judge JSON schema via xgrammar guided decoding")
+    ap.add_argument("--rationale", action=argparse.BooleanOptionalAction, default=True, help="include the rationale field in the schema/prompt (roughly doubles output length)")
     args = ap.parse_args()
 
     spec = REGISTRY[args.model]
@@ -282,10 +355,10 @@ def main():
 
         repo_id, quantization = resolve_quant(spec, args.quant)
         llm = build_llm(spec, repo_id, quantization)
-        sampling_params = build_sampling_params()
+        sampling_params = build_sampling_params(args.guided, args.rationale)
 
         start = time.time()
-        results = process_chunk(llm, sampling_params, template, bench_rows)
+        results = process_chunk(llm, sampling_params, template, bench_rows, args.rationale)
         elapsed = time.time() - start
 
         processed = len(bench_rows)
@@ -327,7 +400,7 @@ def main():
         for row in rows[:3]:
             print("=" * 80)
             print(f"id={row['id']}")
-            print(render(template, row["cleaned_text"]))
+            print(render(template, row["cleaned_text"], args.rationale))
         return
 
     output_dir = Path(args.output_dir)
@@ -343,7 +416,7 @@ def main():
 
     repo_id, quantization = resolve_quant(spec, args.quant)
     llm = build_llm(spec, repo_id, quantization)
-    sampling_params = build_sampling_params()
+    sampling_params = build_sampling_params(args.guided, args.rationale)
 
     processed = 0
     parse_failures = 0
@@ -352,7 +425,7 @@ def main():
     with output_path.open("a", encoding="utf-8") as fh:
         for chunk_start in range(0, len(todo), BATCH_SIZE):
             chunk = todo[chunk_start : chunk_start + BATCH_SIZE]
-            results = process_chunk(llm, sampling_params, template, chunk)
+            results = process_chunk(llm, sampling_params, template, chunk, args.rationale)
 
             for row, (parsed, raw) in zip(chunk, results):
                 out_row = {"id": row["id"], "model": args.model, "prompt_variant": prompt_stem}

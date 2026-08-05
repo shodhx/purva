@@ -23,7 +23,11 @@ class ModelSpec:
     quantization: str
     max_model_len: int
     dtype: str
-    max_num_seqs: int = 32
+    # vLLM reported 10,032 GPU blocks and 156x max concurrency at
+    # max_model_len=1024 — 32 badly underused available KV cache. 96 is the
+    # new baseline for all judges; drop to 64 for any specific model that
+    # OOMs at 96 (see per-entry overrides below).
+    max_num_seqs: int = 96
     # Optional pointer to a well-established AWQ build of this model, used in
     # preference to the bitsandbytes path (AWQ kernels are substantially
     # faster than bitsandbytes on Turing/T4). Left None where no repo could
@@ -62,7 +66,6 @@ REGISTRY: dict[str, ModelSpec] = {
         quantization="awq",
         max_model_len=1024,
         dtype="float16",
-        max_num_seqs=48,
     ),
     "mistral-nemo-12b": ModelSpec(
         repo_id="mistralai/Mistral-Nemo-Instruct-2407",

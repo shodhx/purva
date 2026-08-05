@@ -20,7 +20,7 @@ The label scheme is frozen after one documented calibration round. It is a two-s
 
 The final label space is `{objective, positive, negative, neutral, mixed}`.
 
-In addition to the stage labels, the judge committee outputs, per sentence: `normalized_domain`, `narrative_voice` (`{first_person, third_person, mixed}`), `sentiment_target` (nullable free text), `confidence` (0–1), and `rationale` (maximum one sentence).
+In addition to the stage labels, the judge committee outputs, per sentence: `normalized_domain`, `narrative_voice` (`{first_person, third_person, mixed}`), `sentiment_target` (nullable free text), `confidence` (0–1), and `rationale` (maximum one sentence). `rationale` is collected on a 10% stratified subsample rather than the full corpus, for compute budget; see CHANGELOG v1.5. The rest of the schema is unchanged and collected on every sentence.
 
 ## 4. Judge committee
 
@@ -83,3 +83,4 @@ Only open weights are used, with pinned revisions. Prompts are stored verbatim i
 - v1.2 (2026-08-03): sequencing amendment — LID human validation (§2) deferred to run concurrently with Phase-5 human annotation; no quarantine executed before validation scores are reviewed; lid_verdict retained as metadata; committee pilot may run on unquarantined data.
 - v1.3 (2026-08-03): §4 roster note — Sarvam-1 replaced by Airavata (instruction-tuned; Sarvam-1 is a base model unsuited to structured JSON output). Revisions to be pinned at pilot completion.
 - v1.4 (2026-08-04): committee labeling scoped to a 20,000-sentence stratified subsample; full corpus released as raw resource.
+- v1.5 (2026-08-05): rationale collected on a 10% stratified subsample rather than the full corpus, for compute budget; schema otherwise unchanged.
