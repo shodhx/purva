@@ -2,11 +2,19 @@
 on Kaggle GPU from the terminal, instead of a human copying files through
 the notebook UI.
 
-Flow: copy kaggle/kernel/ to a scratch dir -> patch MODEL_NAME/BENCH_N/QUANT
-constants in the copy's main.py -> `kaggle kernels push` -> poll
-`kaggle kernels status` until terminal -> `kaggle kernels output` into
-data/committee/ (full run) or parse the downloaded log for the bench
-summary (bench mode). On failure, fetch and print the kernel log either way.
+Flow: copy kaggle/kernel/ to a scratch dir -> patch
+MODEL_NAME/BENCH_N/QUANT/CHUNK constants in the copy's main.py -> `kaggle
+kernels push` -> poll `kaggle kernels status` until terminal -> `kaggle
+kernels output` into data/committee/ (full/chunk run) or parse the
+downloaded log for the bench summary (bench mode). On failure, fetch and
+print the kernel log either way.
+
+--chunk N (1-9) targets a single data/chunks/chunk_NN.jsonl shard produced
+by make_chunks.py, instead of the default full/subset input — this is the
+chunk-major processing mode, where every chunk is labeled by all judges
+before moving to the next chunk. The kernel stages that run's output under
+committee/chunk_NN/ so downloaded shards keep their chunk subdirectory
+(merge_shards.py depends on that layout).
 
 The checked-in kaggle/kernel/main.py is never modified — only the scratch
 copy is patched, so every push is reproducible purely from this script's
@@ -62,18 +70,19 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     raise last_exc
 
 
-def patch_main(text: str, model: str, bench: int, quant: str, guided: bool, rationale: bool) -> str:
+def patch_main(text: str, model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int) -> str:
     patched, n1 = re.subn(r'^MODEL_NAME = .*$', f'MODEL_NAME = "{model}"', text, count=1, flags=re.MULTILINE)
     patched, n2 = re.subn(r'^BENCH_N = .*$', f'BENCH_N = {bench}', patched, count=1, flags=re.MULTILINE)
     patched, n3 = re.subn(r'^QUANT = .*$', f'QUANT = "{quant}"', patched, count=1, flags=re.MULTILINE)
     patched, n4 = re.subn(r'^GUIDED = .*$', f'GUIDED = {guided}', patched, count=1, flags=re.MULTILINE)
     patched, n5 = re.subn(r'^RATIONALE = .*$', f'RATIONALE = {rationale}', patched, count=1, flags=re.MULTILINE)
-    if (n1, n2, n3, n4, n5) != (1, 1, 1, 1, 1):
-        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3, n4, n5)}")
+    patched, n6 = re.subn(r'^CHUNK = .*$', f'CHUNK = {chunk}', patched, count=1, flags=re.MULTILINE)
+    if (n1, n2, n3, n4, n5, n6) != (1, 1, 1, 1, 1, 1):
+        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3, n4, n5, n6)}")
     return patched
 
 
-def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, rationale: bool) -> Path:
+def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int) -> Path:
     scratch = Path(tempfile.mkdtemp(prefix="purva_kaggle_push_"))
     for item in KERNEL_TEMPLATE_DIR.iterdir():
         dest = scratch / item.name
@@ -83,7 +92,7 @@ def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, ration
             shutil.copy(item, dest)
 
     main_path = scratch / "main.py"
-    patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant, guided, rationale)
+    patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant, guided, rationale, chunk)
     main_path.write_text(patched, encoding="utf-8")
 
     return scratch
@@ -185,19 +194,23 @@ def main():
     ap.add_argument("--bench", type=int, default=0, metavar="N", help="benchmark on the first N pilot sentences instead of a full run")
     ap.add_argument("--guided", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--rationale", action=argparse.BooleanOptionalAction, default=True)
+    ap.add_argument("--chunk", type=int, default=0, metavar="N", choices=range(0, 10), help="process only data/chunks/chunk_NN.jsonl (1-9); 0 = legacy full/subset run over the default input")
     ap.add_argument("--timeout", type=int, default=2400, help="max seconds to wait for the kernel to finish")
     ap.add_argument("--poll-interval", type=int, default=20)
     ap.add_argument("--output-dir", default="data/committee")
     args = ap.parse_args()
 
-    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant, args.guided, args.rationale)
+    if args.bench and args.chunk:
+        ap.error("--bench and --chunk are mutually exclusive — bench mode always runs over data/pilot_set.jsonl")
+
+    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant, args.guided, args.rationale, args.chunk)
     print(f"scratch push dir: {scratch_dir}")
 
     try:
         push(scratch_dir)
         status = poll_status(KERNEL_REF, args.timeout, args.poll_interval)
 
-        mode = f"bench{args.bench}" if args.bench else "full"
+        mode = f"bench{args.bench}" if args.bench else (f"chunk{args.chunk:02d}" if args.chunk else "full")
         tag = f"{mode}__{args.quant}__g{int(args.guided)}r{int(args.rationale)}"
         fetch_dir = Path(args.output_dir) / "kaggle_out" / f"{args.model}__{tag}"
         fetch_output(KERNEL_REF, fetch_dir)
@@ -211,8 +224,17 @@ def main():
         if args.bench:
             print_bench_summary(fetch_dir)
         else:
-            shard_files = list(fetch_dir.glob("committee/*.jsonl")) or list(fetch_dir.glob("*.jsonl"))
-            print(f"shards downloaded to {fetch_dir}: {[f.name for f in shard_files]}")
+            shard_files = (
+                list(fetch_dir.glob("committee/*/*.jsonl"))
+                or list(fetch_dir.glob("committee/*.jsonl"))
+                or list(fetch_dir.glob("*.jsonl"))
+            )
+            print(f"shards downloaded to {fetch_dir}: {[str(f.relative_to(fetch_dir)) for f in shard_files]}")
+            if args.chunk:
+                print(
+                    f"copy these into data/committee/chunk_{args.chunk:02d}/ before running merge_shards.py "
+                    "(chunk subdirectory structure must be preserved)"
+                )
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 

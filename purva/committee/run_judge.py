@@ -9,6 +9,10 @@ from pathlib import Path
 from .models import REGISTRY, ModelSpec
 
 BATCH_SIZE = 64
+# Shared by build_llm and build_sampling_params so both actually use the same
+# value, and by main()'s run_config recording so what's recorded is what ran
+# rather than a second hardcoded copy that could drift from it.
+SEED = 42
 # 200 was marginal: guided decoding stops as soon as the JSON object closes,
 # so a higher cap costs nothing on well-behaved items and only helps items
 # whose sentiment_target/domain values (often Devanagari, which tokenizes
@@ -198,7 +202,7 @@ def build_llm(spec: ModelSpec, repo_id: str, quantization: str):
         max_num_seqs=spec.max_num_seqs,
         swap_space=2,  # GB; lets residual preemption swap to CPU rather than recompute
         dtype=spec.dtype,
-        seed=42,
+        seed=SEED,
         # Every request shares an identical ~1000-1100-token prompt prefix
         # (the frozen judge prompt) with only the sentence differing — cache
         # it instead of recomputing per request. Per-model override: see
@@ -291,7 +295,7 @@ def build_sampling_params(guided: bool, expect_rationale: bool):
 
     kwargs = dict(
         temperature=0.0,
-        seed=42,
+        seed=SEED,
         max_tokens=MAX_TOKENS,
         stop=STOP_SEQUENCES,
         # True, not False: with False, vLLM strips the entire matched stop
@@ -444,6 +448,19 @@ def main():
     llm = build_llm(spec, repo_id, quantization)
     sampling_params = build_sampling_params(args.guided, args.rationale)
 
+    # Recorded into every output row below. Chunks are processed weeks apart
+    # across separate Kaggle sessions — this is what lets a later audit
+    # confirm the conditions were actually identical rather than trusting
+    # they were (see merge_shards.py's check_config_consistency).
+    run_config = {
+        "repo_id": repo_id,
+        "revision": spec.revision,
+        "quantization": quantization,
+        "prompt_file": str(prompt_path),
+        "seed": SEED,
+        "max_model_len": spec.max_model_len,
+    }
+
     processed = 0
     parse_failures = 0
     start = time.time()
@@ -454,7 +471,7 @@ def main():
             results = process_chunk(llm, sampling_params, template, chunk, args.rationale)
 
             for row, (parsed, raw, prompt_tokens) in zip(chunk, results):
-                out_row = {"id": row["id"], "model": args.model, "prompt_variant": prompt_stem}
+                out_row = {"id": row["id"], "model": args.model, "prompt_variant": prompt_stem, "run_config": run_config}
                 if parsed is not None:
                     out_row.update(parsed)
                 else:

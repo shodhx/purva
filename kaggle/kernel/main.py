@@ -20,6 +20,7 @@ BENCH_N = 0  # 0 = full run over INPUT_FILE; >0 = bench mode, first N pilot sent
 QUANT = "auto"  # auto | awq | bnb
 GUIDED = True  # xgrammar guided decoding, constrains output to the judge JSON schema
 RATIONALE = True  # include the rationale field in the schema/prompt
+CHUNK = 0  # 0 = legacy run over INPUT_FILE below; 1-9 = process only data/chunks/chunk_NN.jsonl
 # --- END PATCHABLE CONSTANTS ---
 
 REPO_URL = "https://github.com/shodhx/purva.git"
@@ -30,8 +31,10 @@ REPO_URL = "https://github.com/shodhx/purva.git"
 # downloadable, staged there explicitly at the end of a full run.
 REPO_DIR = Path("/kaggle/tmp/purva")
 KAGGLE_INPUT_ROOT = Path("/kaggle/input")
-INPUT_FILE = "data/label_subset.jsonl"  # full-run input; ignored in bench mode
-DATA_FILES = ["corpus_lid.jsonl", "pilot_set.jsonl", "label_subset.jsonl"]
+INPUT_FILE = "data/label_subset.jsonl"  # legacy full-run input; ignored in bench mode and when CHUNK is set
+DATA_FILES = ["corpus_lid.jsonl", "pilot_set.jsonl", "label_subset.jsonl"] + [
+    f"chunk_{n:02d}.jsonl" for n in range(1, 10)
+]
 
 
 def run(cmd, **kwargs):
@@ -52,6 +55,22 @@ def set_hf_token():
               "(fine for ungated repos, will fail to download gated ones)")
 
 
+def print_hf_diagnostics():
+    """Prints whether an HF token is actually populated in the environment
+    and what identity (if any) huggingface_hub resolves it to. This is a
+    pure diagnostic — it never raises — so a gated-repo access question
+    (e.g. ai4bharat/Airavata for the 'indic' judge) resolves as a side
+    effect of the next run's log instead of needing its own investigation."""
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    print(f"[hf diagnostic] HF token env var populated: {bool(token)}")
+    try:
+        from huggingface_hub import whoami
+
+        print(f"[hf diagnostic] huggingface_hub.whoami() -> {whoami()}")
+    except Exception as e:
+        print(f"[hf diagnostic] huggingface_hub.whoami() failed: {e!r}")
+
+
 def find_input_file(name: str) -> Path | None:
     """Locate a dataset file anywhere under /kaggle/input. Kaggle's mount
     layout for dataset_sources has varied across API/UI versions (flat
@@ -64,6 +83,9 @@ def find_input_file(name: str) -> Path | None:
 
 
 def main():
+    if not (0 <= CHUNK <= 9):
+        raise ValueError(f"CHUNK must be 0 (legacy) or 1-9, got {CHUNK}")
+
     set_hf_token()
 
     if KAGGLE_INPUT_ROOT.exists():
@@ -79,6 +101,10 @@ def main():
 
     run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements-kaggle.txt"], cwd=str(REPO_DIR))
 
+    # Only meaningful once huggingface_hub is actually installed (pinned in
+    # requirements-kaggle.txt), hence run after the pip install above.
+    print_hf_diagnostics()
+
     data_dir = REPO_DIR / "data"
     data_dir.mkdir(exist_ok=True)
     for name in DATA_FILES:
@@ -89,13 +115,22 @@ def main():
         else:
             print(f"skip (not found anywhere under {KAGGLE_INPUT_ROOT}): {name}")
 
+    # CHUNK>0 targets a single data/chunks/chunk_NN.jsonl shard (chunk-major
+    # processing: every judge labels one chunk before any judge moves on to
+    # the next) instead of the legacy INPUT_FILE. Its output is staged under
+    # a chunk_NN/ subdirectory so merge_shards.py can tell which chunk each
+    # shard belongs to and detect gaps per (chunk, judge) pair.
+    chunk_tag = f"chunk_{CHUNK:02d}" if CHUNK else None
+    run_input_file = f"data/{chunk_tag}.jsonl" if CHUNK else INPUT_FILE
+    output_dir = f"data/committee/{chunk_tag}" if CHUNK else "data/committee"
+
     cmd = [sys.executable, "-m", "purva.committee.run_judge", "--model", MODEL_NAME, "--quant", QUANT]
     cmd += ["--guided"] if GUIDED else ["--no-guided"]
     cmd += ["--rationale"] if RATIONALE else ["--no-rationale"]
     if BENCH_N:
         cmd += ["--bench", str(BENCH_N)]
     else:
-        cmd += ["--input", INPUT_FILE]
+        cmd += ["--input", run_input_file, "--output-dir", output_dir]
 
     run(cmd, cwd=str(REPO_DIR))
 
@@ -108,9 +143,10 @@ def main():
             shutil.copy(failures_src, Path("/kaggle/working") / failures_src.name)
             print(f"staged bench failures {failures_src} -> /kaggle/working/{failures_src.name}")
     else:
-        out_dir = Path("/kaggle/working/committee")
-        out_dir.mkdir(exist_ok=True)
-        for f in (data_dir / "committee").glob("*.jsonl"):
+        src_dir = data_dir / output_dir[len("data/") :]
+        out_dir = Path("/kaggle/working/committee") / (chunk_tag or "")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for f in src_dir.glob("*.jsonl"):
             shutil.copy(f, out_dir / f.name)
             print(f"staged output {f} -> {out_dir / f.name}")
 
