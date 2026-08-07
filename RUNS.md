@@ -19,3 +19,5 @@ wall-clock (which also includes git clone / pip install / model load).
 | 2026-08-07 | 2 | mistral-nemo-12b | casperhansen/mistral-nemo-instruct-2407-awq | main | awq | 1536 | 42 | prompts/judge_prompt_v1.txt | 10026 | 1 | 3113.8 | 36 |
 | 2026-08-07 | 2 | qwen2.5-14b | Qwen/Qwen2.5-14B-Instruct-AWQ | main | awq | 1536 | 42 | prompts/judge_prompt_v1.txt | 10026 | 0 | 4055.6 | 37 |
 | 2026-08-07 | 2 | gemma-2-9b | hugging-quants/gemma-2-9b-it-AWQ-INT4 | main | awq | 1536 | 42 | prompts/judge_prompt_v1.txt | 10026 | 0 | 9453.3 | 38 |
+| 2026-08-07 | 3 | aya-expanse-8b | Orion-zhen/aya-expanse-8b-AWQ | main | awq | 1536 | 42 | prompts/judge_prompt_v1.txt | 10023 | 0 | 2550.7 | 39 |
+| 2026-08-07 | 3 | llama-3.1-8b | hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 | main | awq | 1536 | 42 | prompts/judge_prompt_v1.txt | 10023 | 1 | 2303.5 | 40 |
