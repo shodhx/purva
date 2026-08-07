@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import REGISTRY, ModelSpec
@@ -366,6 +368,7 @@ def main():
     prompt_path = resolve_prompt_path(args.prompt)
     template = prompt_path.read_text(encoding="utf-8")
     prompt_stem = prompt_path.stem
+    prompt_sha256 = hashlib.sha256(template.encode("utf-8")).hexdigest()
 
     # --bench is fully self-contained (reads only data/pilot_set.jsonl) and
     # must not touch --input at all, so it's handled before the unconditional
@@ -464,6 +467,7 @@ def main():
     processed = 0
     parse_failures = 0
     start = time.time()
+    start_time_iso = datetime.now(timezone.utc).isoformat()
 
     with output_path.open("a", encoding="utf-8") as fh:
         for chunk_start in range(0, len(todo), BATCH_SIZE):
@@ -488,6 +492,7 @@ def main():
         fh.flush()
 
     elapsed = time.time() - start
+    end_time_iso = datetime.now(timezone.utc).isoformat()
     rate = processed / elapsed if elapsed > 0 else 0.0
 
     print("\n=== Final summary ===")
@@ -496,6 +501,30 @@ def main():
         print(f"parse failures: {parse_failures} ({parse_failures / processed * 100:.2f}%)")
     print(f"throughput: {rate:.2f} sentences/sec")
     print(f"elapsed: {elapsed:.1f}s")
+
+    # One small sidecar per shard — deliberately not per-row (see run_config
+    # above for the per-row fields). Chunks are processed weeks apart across
+    # separate Kaggle sessions, so this is what lets a later audit confirm
+    # exactly which conditions produced this shard without re-parsing the
+    # kernel log.
+    meta_path = output_path.with_suffix(".meta.json")
+    meta = {
+        "repo_id": repo_id,
+        "revision": spec.revision,
+        "quantization": quantization,
+        "max_model_len": spec.max_model_len,
+        "max_num_seqs": spec.max_num_seqs,
+        "enable_prefix_caching": spec.enable_prefix_caching,
+        "guided_decoding": args.guided,
+        "seed": SEED,
+        "prompt_file": str(prompt_path),
+        "prompt_file_sha256": prompt_sha256,
+        "start_time": start_time_iso,
+        "end_time": end_time_iso,
+        "total_generation_seconds": round(elapsed, 1),
+    }
+    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"wrote {meta_path}")
 
 
 if __name__ == "__main__":

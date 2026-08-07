@@ -146,9 +146,10 @@ def main():
         src_dir = data_dir / output_dir[len("data/") :]
         out_dir = Path("/kaggle/working/committee") / (chunk_tag or "")
         out_dir.mkdir(parents=True, exist_ok=True)
-        for f in src_dir.glob("*.jsonl"):
-            shutil.copy(f, out_dir / f.name)
-            print(f"staged output {f} -> {out_dir / f.name}")
+        for pattern in ("*.jsonl", "*.meta.json"):
+            for f in src_dir.glob(pattern):
+                shutil.copy(f, out_dir / f.name)
+                print(f"staged output {f} -> {out_dir / f.name}")
 
 
 if __name__ == "__main__":
