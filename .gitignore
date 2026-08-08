@@ -4,10 +4,15 @@ data/
 
 # secrets — API keys, configs with credentials
 config.yaml
-.env
 *.key
 config*.yaml
 !config*.example.yaml
+*.env
+!*.env.example
+kaggle.json
+credentials.json
+access_token
+access_token.*
 
 # python
 __pycache__/

@@ -1,5 +1,5 @@
 {
-  "id": "abhiprd20/purva-judge-committee",
+  "id": "YOUR_KAGGLE_USERNAME/purva-judge-committee",
   "title": "purva-judge-committee",
   "code_file": "main.py",
   "language": "python",
@@ -9,7 +9,7 @@
   "enable_tpu": false,
   "machine_shape": "NvidiaTeslaT4",
   "enable_internet": true,
-  "dataset_sources": ["abhiprd20/purva-corpus"],
+  "dataset_sources": ["YOUR_KAGGLE_USERNAME/purva-corpus"],
   "competition_sources": [],
   "kernel_sources": [],
   "model_sources": []

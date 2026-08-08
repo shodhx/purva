@@ -21,6 +21,10 @@ SEED = 42
 # expensively) push length past the old budget.
 MAX_TOKENS = 320
 FLUSH_EVERY = 50
+# Recorded in every .meta.json sidecar in place of which Kaggle account ran
+# the job — hardware class is reproducibility-relevant, account identity
+# isn't, and every run so far has been on this same free-tier shape.
+HARDWARE_DESCRIPTOR = "Kaggle T4x2 (free tier)"
 
 # Observed pilot failure mode: judges emit one valid JSON object, then keep
 # generating junk (a duplicate object, "Please provide..." loops, trailing
@@ -467,7 +471,7 @@ def main():
     processed = 0
     parse_failures = 0
     start = time.time()
-    start_time_iso = datetime.now(timezone.utc).isoformat()
+    run_date = datetime.now(timezone.utc).date().isoformat()
 
     with output_path.open("a", encoding="utf-8") as fh:
         for chunk_start in range(0, len(todo), BATCH_SIZE):
@@ -492,7 +496,6 @@ def main():
         fh.flush()
 
     elapsed = time.time() - start
-    end_time_iso = datetime.now(timezone.utc).isoformat()
     rate = processed / elapsed if elapsed > 0 else 0.0
 
     print("\n=== Final summary ===")
@@ -519,8 +522,8 @@ def main():
         "seed": SEED,
         "prompt_file": str(prompt_path),
         "prompt_file_sha256": prompt_sha256,
-        "start_time": start_time_iso,
-        "end_time": end_time_iso,
+        "date": run_date,
+        "hardware": HARDWARE_DESCRIPTOR,
         "total_generation_seconds": round(elapsed, 1),
     }
     meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")

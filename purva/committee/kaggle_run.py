@@ -34,10 +34,17 @@ import tempfile
 import time
 from pathlib import Path
 
+from ..lid.env import load_env
 from .models import REGISTRY
 
+load_env()
+
 KERNEL_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "kaggle" / "kernel"
-DEFAULT_OWNER = "abhiprd20"
+# No account name is hardcoded here — each operator's Kaggle username lives
+# in their own .env (KAGGLE_OWNER), never in source control. --owner exists
+# to override this per-invocation when rotating between accounts for fresh
+# GPU quota.
+DEFAULT_OWNER = os.environ.get("KAGGLE_OWNER", "")
 KERNEL_SLUG = "purva-judge-committee"
 DATASET_SLUG = "purva-corpus"
 
@@ -99,16 +106,16 @@ def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, ration
 
     # kernel-metadata.json's "id" determines which account's kernel `kaggle
     # kernels push` targets, and "dataset_sources" which account's dataset
-    # gets mounted at /kaggle/input — both must move together when --owner
-    # differs from DEFAULT_OWNER (e.g. a second Kaggle account for fresh GPU
-    # quota), or the push would go to one account while reading stale/no
-    # data from the other's dataset.
-    if owner != DEFAULT_OWNER:
-        meta_path = scratch / "kernel-metadata.json"
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        meta["id"] = f"{owner}/{KERNEL_SLUG}"
-        meta["dataset_sources"] = [f"{owner}/{DATASET_SLUG}"]
-        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    # gets mounted at /kaggle/input — both must move together, or the push
+    # would go to one account while reading stale/no data from another's
+    # dataset. The checked-in template holds a placeholder (no real account
+    # name belongs in source control), so this always rewrites both fields
+    # rather than only when --owner deviates from some hardcoded default.
+    meta_path = scratch / "kernel-metadata.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["id"] = f"{owner}/{KERNEL_SLUG}"
+    meta["dataset_sources"] = [f"{owner}/{DATASET_SLUG}"]
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     return scratch
 
@@ -213,8 +220,11 @@ def main():
     ap.add_argument("--timeout", type=int, default=2400, help="max seconds to wait for the kernel to finish")
     ap.add_argument("--poll-interval", type=int, default=20)
     ap.add_argument("--output-dir", default="data/committee")
-    ap.add_argument("--owner", default=DEFAULT_OWNER, help="Kaggle account that owns the kernel/dataset — switch when rotating accounts for fresh GPU quota")
+    ap.add_argument("--owner", default=DEFAULT_OWNER, help="Kaggle account that owns the kernel/dataset (defaults to $KAGGLE_OWNER from .env) — switch when rotating accounts for fresh GPU quota")
     args = ap.parse_args()
+
+    if not args.owner:
+        ap.error("no --owner given and KAGGLE_OWNER is not set in .env — set one of the two to a Kaggle username")
 
     if args.bench and args.chunk:
         ap.error("--bench and --chunk are mutually exclusive — bench mode always runs over data/pilot_set.jsonl")
