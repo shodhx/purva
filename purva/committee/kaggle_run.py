@@ -37,7 +37,9 @@ from pathlib import Path
 from .models import REGISTRY
 
 KERNEL_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "kaggle" / "kernel"
-KERNEL_REF = "abhiprd20/purva-judge-committee"
+DEFAULT_OWNER = "abhiprd20"
+KERNEL_SLUG = "purva-judge-committee"
+DATASET_SLUG = "purva-corpus"
 
 TERMINAL_OK = {"complete"}
 TERMINAL_FAIL = {"error", "cancelacknowledged", "cancelrequested"}
@@ -82,7 +84,7 @@ def patch_main(text: str, model: str, bench: int, quant: str, guided: bool, rati
     return patched
 
 
-def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int) -> Path:
+def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int, owner: str) -> Path:
     scratch = Path(tempfile.mkdtemp(prefix="purva_kaggle_push_"))
     for item in KERNEL_TEMPLATE_DIR.iterdir():
         dest = scratch / item.name
@@ -94,6 +96,19 @@ def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, ration
     main_path = scratch / "main.py"
     patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant, guided, rationale, chunk)
     main_path.write_text(patched, encoding="utf-8")
+
+    # kernel-metadata.json's "id" determines which account's kernel `kaggle
+    # kernels push` targets, and "dataset_sources" which account's dataset
+    # gets mounted at /kaggle/input — both must move together when --owner
+    # differs from DEFAULT_OWNER (e.g. a second Kaggle account for fresh GPU
+    # quota), or the push would go to one account while reading stale/no
+    # data from the other's dataset.
+    if owner != DEFAULT_OWNER:
+        meta_path = scratch / "kernel-metadata.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["id"] = f"{owner}/{KERNEL_SLUG}"
+        meta["dataset_sources"] = [f"{owner}/{DATASET_SLUG}"]
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     return scratch
 
@@ -198,22 +213,25 @@ def main():
     ap.add_argument("--timeout", type=int, default=2400, help="max seconds to wait for the kernel to finish")
     ap.add_argument("--poll-interval", type=int, default=20)
     ap.add_argument("--output-dir", default="data/committee")
+    ap.add_argument("--owner", default=DEFAULT_OWNER, help="Kaggle account that owns the kernel/dataset — switch when rotating accounts for fresh GPU quota")
     args = ap.parse_args()
 
     if args.bench and args.chunk:
         ap.error("--bench and --chunk are mutually exclusive — bench mode always runs over data/pilot_set.jsonl")
 
-    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant, args.guided, args.rationale, args.chunk)
+    kernel_ref = f"{args.owner}/{KERNEL_SLUG}"
+
+    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant, args.guided, args.rationale, args.chunk, args.owner)
     print(f"scratch push dir: {scratch_dir}")
 
     try:
         push(scratch_dir)
-        status = poll_status(KERNEL_REF, args.timeout, args.poll_interval)
+        status = poll_status(kernel_ref, args.timeout, args.poll_interval)
 
         mode = f"bench{args.bench}" if args.bench else (f"chunk{args.chunk:02d}" if args.chunk else "full")
         tag = f"{mode}__{args.quant}__g{int(args.guided)}r{int(args.rationale)}"
         fetch_dir = Path(args.output_dir) / "kaggle_out" / f"{args.model}__{tag}"
-        fetch_output(KERNEL_REF, fetch_dir)
+        fetch_output(kernel_ref, fetch_dir)
 
         if status == "error":
             print(f"\nkernel run FAILED for model={args.model} quant={args.quant} bench={args.bench}")
