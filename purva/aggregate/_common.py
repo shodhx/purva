@@ -58,12 +58,40 @@ def build_strata(df: pd.DataFrame) -> tuple[np.ndarray, list[tuple[str, str]]]:
 
 
 def posterior_entropy(posteriors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """(entropy_nat, entropy_norm); entropy_norm = entropy_nat / ln(N_CLASSES)
-    so it's comparable across analyses regardless of class count."""
+    """(entropy_nat, entropy_norm); entropy_norm = entropy_nat / ln(K), K
+    taken from posteriors.shape[1] (not the global N_CLASSES) so this works
+    unchanged if the label space is ever reduced (see the four-class
+    fallback in run_aggregation.py)."""
     p = np.clip(posteriors, 1e-300, 1.0)
     entropy_nat = -(p * np.log(p)).sum(axis=1)
-    return entropy_nat, entropy_nat / np.log(N_CLASSES)
+    return entropy_nat, entropy_nat / np.log(posteriors.shape[1])
 
 
-def argmax_labels(posteriors: np.ndarray) -> list[str]:
-    return [LABELS[i] for i in np.argmax(posteriors, axis=1)]
+def argmax_labels(posteriors: np.ndarray, labels: tuple[str, ...] = LABELS) -> list[str]:
+    return [labels[i] for i in np.argmax(posteriors, axis=1)]
+
+
+def raw_vote_frequency(votes: np.ndarray, labels: tuple[str, ...] = LABELS) -> np.ndarray:
+    """Per-class share of all *votes actually cast* (excluding -1/missing)
+    — the anchor Dawid-Skene's class prior is regularised toward (see
+    dawid_skene.py's class_prior_anchor), so a class no judge produces in
+    quantity can't freely inflate to a third of the corpus."""
+    total = int((votes != -1).sum())
+    return np.array([(votes == i).sum() / total for i in range(len(labels))])
+
+
+def load_aggregated(path: str) -> list[dict]:
+    import json
+    from pathlib import Path
+
+    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def method_labels_from_aggregated(df: pd.DataFrame, aggregated_rows: list[dict]) -> dict[str, list[str]]:
+    """{method_name: [label per row, in df's row order]} for every
+    aggregation method present in the aggregated JSONL (majority_vote,
+    dawid_skene, stratified_dawid_skene, mace, glad-if-available)."""
+    by_id = {r["id"]: r for r in aggregated_rows}
+    ordered = [by_id[i] for i in df["id"]]
+    method_names = [k for k in ordered[0] if k not in ("id", "votes")]
+    return {m: [r[m]["label"] for r in ordered] for m in method_names}

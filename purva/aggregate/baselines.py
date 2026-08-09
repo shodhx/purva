@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from ._common import JUDGES, LABELS, N_CLASSES
+from ._common import JUDGES, LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -26,21 +26,21 @@ class BaselineResult:
     extra: dict = field(default_factory=dict)
 
 
-def majority_vote(votes: np.ndarray) -> BaselineResult:
+def majority_vote(votes: np.ndarray, labels: tuple[str, ...] = LABELS) -> BaselineResult:
     """Plain vote share among judges who actually voted (denominator is
     n_voters, 4 or 5, not a fixed 5 — this is majority vote's own way of
     handling the 33 items with a missing judge, no DS-style marginalisation
     needed since there's no likelihood model here).
 
     Tie-break rule (documented, not hidden): ties go to whichever tied
-    class comes first in the canonical order LABELS = (objective, positive,
-    negative, neutral, mixed). This is exactly numpy.argmax's own
-    tie-break behavior (first occurrence of the max wins), so the decision
-    itself needs no extra code — only the tie *count* is worth tracking
-    separately, reported in `extra`."""
+    class comes first in the canonical order `labels`. This is exactly
+    numpy.argmax's own tie-break behavior (first occurrence of the max
+    wins), so the decision itself needs no extra code — only the tie
+    *count* is worth tracking separately, reported in `extra`."""
     n = votes.shape[0]
-    counts = np.zeros((n, N_CLASSES))
-    for k in range(N_CLASSES):
+    n_classes = len(labels)
+    counts = np.zeros((n, n_classes))
+    for k in range(n_classes):
         counts[:, k] = (votes == k).sum(axis=1)
     n_voters = np.clip((votes != -1).sum(axis=1, keepdims=True), 1, None)
     posteriors = counts / n_voters
@@ -53,12 +53,12 @@ def majority_vote(votes: np.ndarray) -> BaselineResult:
         extra={
             "tie_count": tie_count,
             "tie_rate": tie_count / n,
-            "tie_break_rule": f"first class in canonical order {list(LABELS)} wins",
+            "tie_break_rule": f"first class in canonical order {list(labels)} wins",
         },
     )
 
 
-def _votes_to_long_df(votes: np.ndarray, item_ids: np.ndarray, judges: tuple[str, ...] = JUDGES) -> pd.DataFrame:
+def _votes_to_long_df(votes: np.ndarray, item_ids: np.ndarray, labels: tuple[str, ...] = LABELS, judges: tuple[str, ...] = JUDGES) -> pd.DataFrame:
     """crowd-kit's expected long format: one row per (task, worker, label)
     — a judge with no vote on an item (-1) simply contributes no row,
     which is crowd-kit's own way of handling missing votes."""
@@ -69,25 +69,25 @@ def _votes_to_long_df(votes: np.ndarray, item_ids: np.ndarray, judges: tuple[str
         parts.append(pd.DataFrame({
             "task": item_ids[mask],
             "worker": name,
-            "label": [LABELS[c] for c in col[mask]],
+            "label": [labels[c] for c in col[mask]],
         }))
     return pd.concat(parts, ignore_index=True)
 
 
-def _proba_to_posteriors(proba: pd.DataFrame, item_ids: np.ndarray) -> np.ndarray:
-    proba = proba.reindex(index=item_ids, columns=list(LABELS), fill_value=0.0)
+def _proba_to_posteriors(proba: pd.DataFrame, item_ids: np.ndarray, labels: tuple[str, ...] = LABELS) -> np.ndarray:
+    proba = proba.reindex(index=item_ids, columns=list(labels), fill_value=0.0)
     arr = proba.to_numpy(dtype=float)
     row_sums = arr.sum(axis=1, keepdims=True)
     zero_rows = row_sums.squeeze(axis=1) == 0
     if zero_rows.any():
         # A task crowd-kit dropped output for (shouldn't happen given every
         # item has >=4 votes, but fail safe rather than divide by zero).
-        arr[zero_rows] = 1.0 / N_CLASSES
+        arr[zero_rows] = 1.0 / len(labels)
         row_sums[zero_rows] = 1.0
     return arr / row_sums
 
 
-def run_mace(votes: np.ndarray, item_ids: np.ndarray, n_restarts: int = 3, n_iter: int = 50, seed: int = 42) -> BaselineResult:
+def run_mace(votes: np.ndarray, item_ids: np.ndarray, labels: tuple[str, ...] = LABELS, n_restarts: int = 3, n_iter: int = 50, seed: int = 42) -> BaselineResult:
     """MACE (Hovy et al. 2013) via crowd-kit. n_restarts reduced from
     crowd-kit's default of 10 to 3 — a compute-budget tradeoff (each
     restart is a full EM run over ~451k (task,worker) rows), documented
@@ -99,10 +99,10 @@ def run_mace(votes: np.ndarray, item_ids: np.ndarray, n_restarts: int = 3, n_ite
     except Exception as e:  # pragma: no cover - exercised only if crowd-kit is absent/broken
         return BaselineResult("mace", None, available=False, unavailable_reason=f"crowd-kit import failed: {e!r}")
     try:
-        df = _votes_to_long_df(votes, item_ids)
+        df = _votes_to_long_df(votes, item_ids, labels)
         model = MACE(n_restarts=n_restarts, n_iter=n_iter, random_state=seed)
         proba = model.fit_predict_proba(df)
-        posteriors = _proba_to_posteriors(proba, item_ids)
+        posteriors = _proba_to_posteriors(proba, item_ids, labels)
         return BaselineResult("mace", posteriors, extra={"n_restarts": n_restarts, "n_iter": n_iter})
     except Exception as e:
         logger.exception("MACE fit_predict_proba failed")
@@ -121,7 +121,7 @@ def run_mace(votes: np.ndarray, item_ids: np.ndarray, n_restarts: int = 3, n_ite
 GLAD_MAX_PRACTICAL_ITEMS = 20_000
 
 
-def run_glad(votes: np.ndarray, item_ids: np.ndarray, n_iter: int = 100, tol: float = 1e-5) -> BaselineResult:
+def run_glad(votes: np.ndarray, item_ids: np.ndarray, labels: tuple[str, ...] = LABELS, n_iter: int = 100, tol: float = 1e-5) -> BaselineResult:
     """GLAD (Whitehill et al. 2009) via crowd-kit."""
     if len(item_ids) > GLAD_MAX_PRACTICAL_ITEMS:
         return BaselineResult(
@@ -138,10 +138,10 @@ def run_glad(votes: np.ndarray, item_ids: np.ndarray, n_iter: int = 100, tol: fl
     except Exception as e:  # pragma: no cover
         return BaselineResult("glad", None, available=False, unavailable_reason=f"crowd-kit import failed: {e!r}")
     try:
-        df = _votes_to_long_df(votes, item_ids)
+        df = _votes_to_long_df(votes, item_ids, labels)
         model = GLAD(n_iter=n_iter, tol=tol, silent=True)
         proba = model.fit_predict_proba(df)
-        posteriors = _proba_to_posteriors(proba, item_ids)
+        posteriors = _proba_to_posteriors(proba, item_ids, labels)
         return BaselineResult("glad", posteriors, extra={"n_iter": n_iter, "tol": tol})
     except Exception as e:
         logger.exception("GLAD fit_predict_proba failed")

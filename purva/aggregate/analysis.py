@@ -4,19 +4,24 @@ master corpus and run_aggregation.py's output and writes:
   data/aggregation_report.md   — the written report.
   data/aggregation_report.json — the same numbers, machine-readable.
 
-Covers: inter-judge agreement (Fleiss' kappa, Krippendorff's alpha,
-pairwise matrix), per-judge/per-stratum confusion analysis (the
-register/text_type reliability hypothesis), judge calibration (ECE/Brier
-against a Dawid-Skene consensus proxy — NOT human gold, which doesn't
-exist yet), leave-one-judge-out sensitivity, aggregator comparison, and
-the entropy distribution that determines the Phase 5 routing budget.
+Covers: the identifiability failure/fix (if relevant — see section 0 of
+the rendered report), inter-judge agreement (Fleiss' kappa, Krippendorff's
+alpha, pairwise matrix), per-judge/per-stratum confusion analysis (the
+register/text_type reliability hypothesis), judge calibration against
+*both* stratified-DS consensus and majority vote (ECE/Brier — NOT human
+gold, which doesn't exist yet), leave-one-judge-out sensitivity, aggregator
+comparison, and the entropy distribution that determines the Phase 5
+routing budget.
+
+The label space (five-class-with-priors, or the four-class fallback) is
+read from purva_aggregated.meta.json rather than assumed — this module
+never hardcodes LABELS for anything that depends on which path was taken.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
@@ -24,9 +29,7 @@ import numpy as np
 import pandas as pd
 
 from . import dawid_skene as ds
-from ._common import JUDGES, LABELS, N_CLASSES, argmax_labels, build_strata, build_vote_matrix, load_master
-
-N_JUDGES = len(JUDGES)
+from ._common import JUDGES, LABELS, build_strata, build_vote_matrix, load_aggregated, load_master, method_labels_from_aggregated, raw_vote_frequency
 
 
 # --------------------------------------------------------------------------
@@ -81,8 +84,9 @@ def pairwise_agreement(votes: np.ndarray, judges: tuple[str, ...] = JUDGES) -> d
 def agreement_section(votes: np.ndarray, binary_votes: np.ndarray) -> dict:
     judge_cols = [votes[:, j] for j in range(votes.shape[1])]
     binary_cols = [binary_votes[:, j] for j in range(binary_votes.shape[1])]
+    n_classes = int(votes.max()) + 1
     return {
-        "fleiss_kappa_5class": fleiss_kappa(judge_cols, N_CLASSES),
+        "fleiss_kappa_5class": fleiss_kappa(judge_cols, n_classes),
         "fleiss_kappa_binary_subjectivity": fleiss_kappa(binary_cols, 2),
         "krippendorff_alpha_5class": krippendorff_alpha_nominal(votes),
         "krippendorff_alpha_binary_subjectivity": krippendorff_alpha_nominal(binary_votes),
@@ -99,47 +103,10 @@ def diagonal_strength(confusion_jkk: np.ndarray) -> float:
     return float(np.diag(confusion_jkk).mean())
 
 
-def mixed_class_caveat(votes: np.ndarray, method_labels: dict[str, list[str]]) -> dict:
-    """"mixed" is rare (~1% of raw votes) and, per the confusion matrices,
-    essentially never correctly re-identified by any judge (near-zero
-    diagonal on the mixed row for all five) — a textbook Dawid-Skene
-    identifiability problem for a class no annotator reliably recognises.
-    The practical symptom: DS inflates the "mixed" prior far past its raw
-    vote share, and stratification inflates it further still. Surfaced
-    explicitly here so a reader doesn't take the "mixed" consensus counts
-    at face value without this warning."""
-    mixed_idx = LABELS.index("mixed")
-    n = votes.shape[0]
-    raw_mixed_vote_items = int(((votes == mixed_idx).any(axis=1)).sum())
-    raw_mixed_votes_total = int((votes == mixed_idx).sum())
-    total_votes = int((votes != -1).sum())
-    counts = {name: int(sum(lbl == "mixed" for lbl in labels)) for name, labels in method_labels.items()}
-    return {
-        "raw_mixed_votes_total": raw_mixed_votes_total,
-        "raw_mixed_votes_share_of_all_votes": raw_mixed_votes_total / total_votes,
-        "items_with_at_least_one_raw_mixed_vote": raw_mixed_vote_items,
-        "items_with_at_least_one_raw_mixed_vote_share": raw_mixed_vote_items / n,
-        "mixed_label_count_by_method": counts,
-        "warning": (
-            "\"mixed\" is voted by any judge on only "
-            f"{raw_mixed_vote_items} items ({raw_mixed_vote_items / n:.1%} of the corpus) and makes up "
-            f"{raw_mixed_votes_total / total_votes:.1%} of all votes cast, yet Dawid-Skene assigns the "
-            f"consensus label \"mixed\" to {counts.get('dawid_skene', 0)} items (standard) and "
-            f"{counts.get('stratified_dawid_skene', 0)} items (stratified) — vs. only "
-            f"{counts.get('majority_vote', 0)} under majority vote. Every judge's confusion matrix shows a "
-            "near-zero diagonal entry for the true-mixed row (see section 2), meaning no judge reliably "
-            "re-produces \"mixed\" even when DS believes it's the true label — a known DS failure mode for "
-            "a weakly-identified class, not evidence that ~30% of the corpus is actually mixed-sentiment. "
-            "Treat consensus \"mixed\" labels as low-confidence pending human adjudication."
-        ),
-    }
-
-
-def confusion_section(votes: np.ndarray, strata: np.ndarray, strata_keys: list[tuple[str, str]],
-                       ds_posteriors: np.ndarray, sds_posteriors: np.ndarray, alpha: float) -> dict:
-    global_confusion = ds.estimate_confusion(votes, ds_posteriors, alpha)
+def confusion_section(votes, strata, strata_keys, ds_posteriors, sds_posteriors, diag_prior, off_diag_prior, shrinkage_k0) -> dict:
+    global_confusion = ds.estimate_confusion(votes, ds_posteriors, diag_prior, off_diag_prior)
     strat_confusion, _global_from_stratified, strata_sizes = ds.estimate_confusion_stratified(
-        votes, sds_posteriors, strata, len(strata_keys), alpha, ds.StratifiedDSConfig().shrinkage_k0,
+        votes, sds_posteriors, strata, len(strata_keys), diag_prior, off_diag_prior, shrinkage_k0,
     )
 
     per_judge_global = {j: diagonal_strength(global_confusion[ji]) for ji, j in enumerate(JUDGES)}
@@ -180,7 +147,9 @@ def confusion_section(votes: np.ndarray, strata: np.ndarray, strata_keys: list[t
 
 
 # --------------------------------------------------------------------------
-# Judge calibration
+# Judge calibration — against BOTH stratified-DS consensus and majority
+# vote, since the divergence between the two was itself diagnostic of the
+# identifiability failure (see report section 0).
 # --------------------------------------------------------------------------
 
 def ece_and_brier(confidence: np.ndarray, correct: np.ndarray, n_bins: int = 10) -> dict:
@@ -205,14 +174,8 @@ def ece_and_brier(confidence: np.ndarray, correct: np.ndarray, n_bins: int = 10)
     return {"ece": ece, "brier_score": brier, "bins": bin_report}
 
 
-def calibration_section(df: pd.DataFrame, votes: np.ndarray, consensus_labels: list[str]) -> dict:
-    """Judge self-reported confidence, calibrated against the stratified-DS
-    consensus argmax as a proxy for correctness. This is explicitly NOT
-    accuracy against human gold — no gold exists yet (Phase 5 hasn't run) —
-    it measures agreement-with-consensus-weighted-by-self-confidence, a
-    standard fallback when gold is unavailable. Treat "ECE"/"Brier" here as
-    calibration-against-consensus, not calibration-against-truth."""
-    consensus_idx = np.array([LABELS.index(x) for x in consensus_labels])
+def calibration_against(df: pd.DataFrame, votes: np.ndarray, consensus_labels: list[str], labels: tuple[str, ...]) -> dict:
+    consensus_idx = np.array([labels.index(x) for x in consensus_labels])
     out = {}
     for ji, j in enumerate(JUDGES):
         voted = votes[:, ji] != -1
@@ -228,19 +191,32 @@ def calibration_section(df: pd.DataFrame, votes: np.ndarray, consensus_labels: l
     return out
 
 
+def calibration_section(df: pd.DataFrame, votes: np.ndarray, sds_labels: list[str], mv_labels: list[str], labels: tuple[str, ...]) -> dict:
+    """Explicitly NOT accuracy against human gold — no gold exists yet
+    (Phase 5 hasn't run). Both proxies are reported side by side because
+    the SDS-vs-MV divergence in these numbers (0.375-0.468 vs 0.661-0.865
+    in the run that had the identifiability bug) was itself the first
+    concrete symptom of stratified DS's degenerate "mixed" catch-all."""
+    return {
+        "vs_stratified_dawid_skene": calibration_against(df, votes, sds_labels, labels),
+        "vs_majority_vote": calibration_against(df, votes, mv_labels, labels),
+    }
+
+
 # --------------------------------------------------------------------------
 # Leave-one-judge-out
 # --------------------------------------------------------------------------
 
-def leave_one_out_section(votes: np.ndarray, full_ds_labels: list[str], config: ds.DSConfig) -> dict:
+def leave_one_out_section(votes: np.ndarray, full_ds_labels: list[str], labels: tuple[str, ...], config: ds.DSConfig) -> dict:
     out = {}
     for ji, j in enumerate(JUDGES):
         remaining = [k for k in range(votes.shape[1]) if k != ji]
         sub_votes = votes[:, remaining]
+        anchor = raw_vote_frequency(sub_votes, labels)
         t0 = time.time()
-        result = ds.run_dawid_skene(sub_votes, config)
+        result = ds.run_dawid_skene(sub_votes, config, n_classes=len(labels), class_prior_anchor=anchor)
         runtime = time.time() - t0
-        sub_labels = argmax_labels(result.posteriors)
+        sub_labels = [labels[i] for i in np.argmax(result.posteriors, axis=1)]
         changed = sum(a != b for a, b in zip(full_ds_labels, sub_labels))
         out[j] = {
             "pct_labels_changed_when_excluded": changed / len(full_ds_labels),
@@ -256,7 +232,7 @@ def leave_one_out_section(votes: np.ndarray, full_ds_labels: list[str], config: 
 # Aggregator comparison
 # --------------------------------------------------------------------------
 
-def aggregator_comparison_section(method_labels: dict[str, list[str]]) -> dict:
+def aggregator_comparison_section(method_labels: dict[str, list[str]], primary_method: str) -> dict:
     names = list(method_labels)
     n = len(next(iter(method_labels.values())))
     pairwise = {}
@@ -266,15 +242,16 @@ def aggregator_comparison_section(method_labels: dict[str, list[str]]) -> dict:
                 continue
             agree = sum(x == y for x, y in zip(method_labels[a], method_labels[b])) / n
             pairwise[f"{a}-{b}"] = agree
-    mv_vs_sds = None
-    if "majority_vote" in method_labels and "stratified_dawid_skene" in method_labels:
+    mv_vs_primary = None
+    if "majority_vote" in method_labels and primary_method in method_labels:
         changed = sum(
-            a != b for a, b in zip(method_labels["majority_vote"], method_labels["stratified_dawid_skene"])
+            a != b for a, b in zip(method_labels["majority_vote"], method_labels[primary_method])
         )
-        mv_vs_sds = {"n_changed": changed, "pct_changed": changed / n}
+        mv_vs_primary = {"n_changed": changed, "pct_changed": changed / n}
     return {
+        "primary_consensus_method": primary_method,
         "pairwise_label_agreement": pairwise,
-        "majority_vote_vs_stratified_ds": mv_vs_sds,
+        "majority_vote_vs_primary": mv_vs_primary,
         "note": "Accuracy against human gold labels cannot be computed yet — Phase 5 human annotation has not run. Not estimated or proxied here.",
     }
 
@@ -291,12 +268,12 @@ def _describe(x: np.ndarray) -> dict:
     }
 
 
-def entropy_section(df: pd.DataFrame, entropy_norm: np.ndarray) -> dict:
+def entropy_section(df: pd.DataFrame, entropy_norm: np.ndarray, method: str) -> dict:
     """df must have a plain 0..N-1 RangeIndex aligned with entropy_norm's
     positional order (true of a freshly-loaded parquet, asserted by the
     caller) — groupby(...).indices gives positional arrays directly, so no
     label/position translation is needed."""
-    out = {"overall": _describe(entropy_norm)}
+    out = {"method": method, "overall": _describe(entropy_norm)}
     for col in ("register", "text_type", "source_name", "script"):
         groups = {str(val): _describe(entropy_norm[pos]) for val, pos in df.groupby(col).indices.items()}
         out[col] = dict(sorted(groups.items(), key=lambda kv: -kv[1]["mean"]))
@@ -304,22 +281,114 @@ def entropy_section(df: pd.DataFrame, entropy_norm: np.ndarray) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Identifiability failure / fix section
+# --------------------------------------------------------------------------
+
+def identifiability_section(agg_meta: dict, votes5: np.ndarray) -> dict:
+    path = agg_meta["label_space_path"]
+    primary = agg_meta["primary_consensus_method"]
+    validity = agg_meta["method_passed_invariants"]
+    ds_cfg = agg_meta["methods"]["dawid_skene"]["config"]
+    sds_cfg = agg_meta["methods"]["stratified_dawid_skene"]["config"]
+    raw_freq5 = raw_vote_frequency(votes5, LABELS)
+    mixed_idx = LABELS.index("mixed")
+
+    description = (
+        "An earlier run of this pipeline (pre-priors) found stratified DS assigning \"mixed\" to 29.6% "
+        "of the corpus against a 1.0% raw-vote rate, including 6,932 unanimous-positive and 4,521 "
+        "unanimous-objective items relabelled \"mixed\" — a Dawid-Skene identifiability failure: no "
+        "judge produces \"mixed\" in enough quantity to constrain its confusion-matrix row, so "
+        "unconstrained EM shaped that row into a catch-all for residual variance, and the higher "
+        "log-likelihood this produced reflected EM exploiting a degenerate direction, not better "
+        "labels. Fixed with two priors applied at every M-step (not just initialisation): a "
+        "diagonal-favouring Dirichlet prior on every confusion-matrix row (encoding \"annotators beat "
+        "chance\"), and class priors shrunk toward the observed raw-vote frequency. Both are asserted "
+        "against permanent invariants in test_aggregation.py before any output is written: every "
+        "unanimous item must keep its unanimous label, and no class's consensus share may exceed 3x "
+        "its raw-vote share."
+    )
+
+    if not validity.get("stratified_dawid_skene", True):
+        sds_class_ratio = agg_meta.get("invariant_reports", {}).get("stratified_dawid_skene", {}).get("class_ratio", {})
+        worst_label, worst_ratio = None, 0.0
+        for lbl, v in sds_class_ratio.get("per_label", {}).items():
+            if v.get("exceeds") and v["ratio"] > worst_ratio:
+                worst_label, worst_ratio = lbl, v["ratio"]
+        description += (
+            " A further finding, not anticipated by the original priors fix: even after dropping "
+            f"\"mixed\" (path `{path}`), stratified DS continued to fail the invariant checks — the same "
+            f"catch-all pathology reappeared on the next-sparsest class"
+            + (f" (\"{worst_label}\", consensus/raw-vote ratio {worst_ratio:.2f}x)" if worst_label else "")
+            + ", reproducibly across every diag_prior/off_diag_prior/class_prior_strength/shrinkage_k0 "
+            "combination tried. This points to structural over-parameterisation in the stratified "
+            "variant (one confusion matrix per judge per stratum, versus one per judge for standard DS) "
+            f"rather than something these two priors alone can fix. Standard (unstratified) DS passes "
+            f"cleanly at `{path}` and is used as the validated primary consensus method (`{primary}`); "
+            "stratified DS is still run and shipped — its per-stratum confusion matrices remain valid "
+            "input to the register/text_type reliability hypothesis test (section 2) — but its overall "
+            "consensus labels are excluded from calibration-as-ground-truth and from routing (section 6)."
+        )
+
+    return {
+        "path_taken": path,
+        "primary_consensus_method": primary,
+        "method_passed_invariants": validity,
+        "priors_used": {
+            "diag_prior": ds_cfg["diag_prior"], "off_diag_prior": ds_cfg["off_diag_prior"],
+            "class_prior_strength": ds_cfg["class_prior_strength"], "shrinkage_k0": sds_cfg["shrinkage_k0"],
+        },
+        "raw_mixed_vote_share": float(raw_freq5[mixed_idx]),
+        "final_invariant_summary": {
+            "unanimity_passed": agg_meta["final_invariant_report"]["unanimity"]["passed"],
+            "class_ratio_passed": agg_meta["final_invariant_report"]["class_ratio"]["passed"],
+        },
+        "description": description,
+    }
+
+
+# --------------------------------------------------------------------------
 # Report rendering
 # --------------------------------------------------------------------------
 
-def render_markdown(report: dict) -> str:
+def render_markdown(report: dict, labels: tuple[str, ...], path: str) -> str:
     lines = ["# Aggregation report", ""]
     lines.append("Generated by `purva/aggregate/analysis.py`. Machine-readable form: `data/aggregation_report.json`.")
+    lines.append(f"Label space in use: **{list(labels)}** (path: `{path}`).")
+    lines.append("")
+
+    idf = report["identifiability"]
+    lines.append("## 0. Identifiability failure and fix")
+    lines.append("")
+    lines.append(idf["description"])
+    lines.append("")
+    lines.append(f"**Path taken: `{idf['path_taken']}`. Validated primary consensus method: `{idf['primary_consensus_method']}`.**")
+    lines.append(
+        f"Priors used: diag_prior={idf['priors_used']['diag_prior']}, "
+        f"off_diag_prior={idf['priors_used']['off_diag_prior']}, "
+        f"class_prior_strength={idf['priors_used']['class_prior_strength']}, "
+        f"shrinkage_k0={idf['priors_used']['shrinkage_k0']} (stratified variant)."
+    )
+    lines.append(
+        "Per-method invariant validity: " + ", ".join(
+            f"`{m}` {'PASSED' if ok else 'FAILED'}" for m, ok in idf["method_passed_invariants"].items()
+        ) + "."
+    )
+    lines.append(
+        f"Final invariant check on the shipped primary consensus: unanimity "
+        f"{'PASSED' if idf['final_invariant_summary']['unanimity_passed'] else 'FAILED'}, "
+        f"class-ratio {'PASSED' if idf['final_invariant_summary']['class_ratio_passed'] else 'FAILED'}."
+    )
+    lines.append(f"Raw \"mixed\" vote share (of all votes cast, 5-class): {idf['raw_mixed_vote_share']:.4f}.")
     lines.append("")
 
     lines.append("## 1. Inter-judge agreement")
     a = report["agreement"]
-    lines.append(f"- Fleiss' kappa (5-class): **{a['fleiss_kappa_5class']:.4f}**")
+    lines.append(f"- Fleiss' kappa ({len(labels)}-class): **{a['fleiss_kappa_5class']:.4f}**")
     lines.append(f"- Fleiss' kappa (binary subjectivity): **{a['fleiss_kappa_binary_subjectivity']:.4f}**")
-    lines.append(f"- Krippendorff's alpha (5-class, nominal): **{a['krippendorff_alpha_5class']:.4f}**")
+    lines.append(f"- Krippendorff's alpha ({len(labels)}-class, nominal): **{a['krippendorff_alpha_5class']:.4f}**")
     lines.append(f"- Krippendorff's alpha (binary subjectivity, nominal): **{a['krippendorff_alpha_binary_subjectivity']:.4f}**")
     lines.append("")
-    lines.append("Pairwise 5-class agreement (fraction agreeing, over items both judges voted on):")
+    lines.append(f"Pairwise {len(labels)}-class agreement (fraction agreeing, over items both judges voted on):")
     lines.append("")
     lines.append("| Pair | Agreement | N compared |")
     lines.append("|---|---|---|")
@@ -351,17 +420,20 @@ def render_markdown(report: dict) -> str:
 
     lines.append("## 3. Judge calibration")
     lines.append(
-        "Calibrated against the stratified-DS consensus label as a proxy for correctness "
-        "(no human gold exists yet — see PROTOCOL.md §6). Expect severe overconfidence."
+        "Reported against both consensus methods, since their divergence was itself diagnostic "
+        "(see section 0). No human gold exists yet (PROTOCOL.md §6). Expect severe overconfidence."
     )
-    lines.append("")
-    lines.append("| Judge | Mean confidence | % conf ≥0.9 | Agreement w/ consensus | ECE | Brier |")
-    lines.append("|---|---|---|---|---|---|")
-    for j, v in report["calibration"].items():
-        lines.append(
-            f"| {j} | {v['mean_confidence']:.3f} | {v['pct_confidence_ge_0_9']:.1%} | "
-            f"{v['empirical_agreement_with_consensus']:.3f} | {v['ece']:.4f} | {v['brier_score']:.4f} |"
-        )
+    for key, title in (("vs_stratified_dawid_skene", "vs. stratified-DS consensus"), ("vs_majority_vote", "vs. majority vote")):
+        lines.append("")
+        lines.append(f"### Calibration {title}")
+        lines.append("")
+        lines.append("| Judge | Mean confidence | % conf ≥0.9 | Agreement w/ consensus | ECE | Brier |")
+        lines.append("|---|---|---|---|---|---|")
+        for j, v in report["calibration"][key].items():
+            lines.append(
+                f"| {j} | {v['mean_confidence']:.3f} | {v['pct_confidence_ge_0_9']:.1%} | "
+                f"{v['empirical_agreement_with_consensus']:.3f} | {v['ece']:.4f} | {v['brier_score']:.4f} |"
+            )
     lines.append("")
 
     lines.append("## 4. Leave-one-judge-out")
@@ -379,20 +451,20 @@ def render_markdown(report: dict) -> str:
     lines.append("|---|---|")
     for pair, agree in ac["pairwise_label_agreement"].items():
         lines.append(f"| {pair} | {agree:.4f} |")
-    if ac["majority_vote_vs_stratified_ds"]:
-        mv = ac["majority_vote_vs_stratified_ds"]
+    if ac["majority_vote_vs_primary"]:
+        mv = ac["majority_vote_vs_primary"]
         lines.append("")
-        lines.append(f"Majority vote vs. stratified DS: **{mv['n_changed']}** items ({mv['pct_changed']:.2%}) change label.")
+        lines.append(f"Majority vote vs. primary consensus (`{ac['primary_consensus_method']}`): **{mv['n_changed']}** items ({mv['pct_changed']:.2%}) change label.")
     lines.append("")
     lines.append(f"> {ac['note']}")
     lines.append("")
 
-    lines.append("### ⚠ \"mixed\" class identifiability caveat")
+    lines.append(f"## 6. Entropy distribution ({report['entropy']['method']}, normalised to [0,1])")
+    lines.append(
+        "Sourced from the validated primary consensus method's posterior (not necessarily stratified "
+        "DS — see section 0). This is also what the Phase 5 routing sets are drawn from."
+    )
     lines.append("")
-    lines.append(report["mixed_class_caveat"]["warning"])
-    lines.append("")
-
-    lines.append("## 6. Entropy distribution (stratified DS, normalised to [0,1])")
     e = report["entropy"]["overall"]
     lines.append(
         f"Overall: mean={e['mean']:.4f}, median={e['median']:.4f}, "
@@ -421,76 +493,84 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--master", default="data/purva_master.parquet")
     ap.add_argument("--aggregated", default="data/purva_aggregated.jsonl")
+    ap.add_argument("--aggregated-meta", default="data/purva_aggregated.meta.json")
     ap.add_argument("--report-md", default="data/aggregation_report.md")
     ap.add_argument("--report-json", default="data/aggregation_report.json")
-    ap.add_argument("--alpha", type=float, default=1.0, help="DS smoothing alpha, must match run_aggregation.py")
     args = ap.parse_args()
+
+    print(f"loading {args.aggregated_meta}")
+    agg_meta = json.loads(Path(args.aggregated_meta).read_text(encoding="utf-8"))
+    labels = tuple(agg_meta["labels"])
+    ds_cfg = agg_meta["methods"]["dawid_skene"]["config"]
+    sds_cfg = agg_meta["methods"]["stratified_dawid_skene"]["config"]
 
     print(f"loading {args.master}")
     df = load_master(args.master).reset_index(drop=True)
-    votes = build_vote_matrix(df)
+    votes5 = build_vote_matrix(df)  # always the full 5-class matrix, for the identifiability section
+    votes = votes5.copy()
+    if len(labels) < 5:
+        mixed_idx = LABELS.index("mixed")
+        votes[votes == mixed_idx] = -1
     strata, strata_keys = build_strata(df)
 
     binary_votes = np.where(votes == -1, -1, (votes != 0).astype(np.int8))  # 0=objective, 1=subjective
 
     print(f"loading {args.aggregated}")
-    agg_rows = [json.loads(line) for line in Path(args.aggregated).read_text(encoding="utf-8").splitlines() if line.strip()]
-    agg_by_id = {r["id"]: r for r in agg_rows}
-    ordered = [agg_by_id[i] for i in df["id"]]
+    agg_rows = load_aggregated(args.aggregated)
+    method_labels = method_labels_from_aggregated(df, agg_rows)
+    by_id = {r["id"]: r for r in agg_rows}
+    ordered = [by_id[i] for i in df["id"]]
 
-    def posteriors_for(method: str) -> np.ndarray | None:
-        if method not in ordered[0]:
-            return None
-        return np.array([[r[method]["posterior"][lbl] for lbl in LABELS] for r in ordered])
+    def posteriors_for(method: str) -> np.ndarray:
+        return np.array([[r[method]["posterior"][lbl] for lbl in labels] for r in ordered])
 
-    def labels_for(method: str) -> list[str] | None:
-        if method not in ordered[0]:
-            return None
-        return [r[method]["label"] for r in ordered]
-
+    primary = agg_meta["primary_consensus_method"]
     ds_posteriors = posteriors_for("dawid_skene")
     sds_posteriors = posteriors_for("stratified_dawid_skene")
-    sds_labels = labels_for("stratified_dawid_skene")
-    ds_labels = labels_for("dawid_skene")
-    entropy_norm = np.array([r["stratified_dawid_skene"]["entropy_norm"] for r in ordered])
+    sds_labels = method_labels["stratified_dawid_skene"]
+    mv_labels = method_labels["majority_vote"]
+    ds_labels = method_labels["dawid_skene"]
+    entropy_norm = np.array([r[primary]["entropy_norm"] for r in ordered])
 
-    method_labels = {}
-    unavailable = {}
-    for method in ("majority_vote", "dawid_skene", "stratified_dawid_skene", "mace", "glad"):
-        labels = labels_for(method)
-        if labels is not None:
-            method_labels[method] = labels
-        else:
-            unavailable[method] = "not present in purva_aggregated.jsonl (see its .meta.json for why)"
+    unavailable = {
+        m: "not present in purva_aggregated.jsonl (see its .meta.json for why)"
+        for m in ("mace", "glad") if m not in method_labels
+    }
+
+    print("identifiability section")
+    identifiability = identifiability_section(agg_meta, votes5)
 
     print("agreement statistics")
     agreement = agreement_section(votes, binary_votes)
 
     print("confusion matrix analysis")
-    confusion = confusion_section(votes, strata, strata_keys, ds_posteriors, sds_posteriors, args.alpha)
+    confusion = confusion_section(votes, strata, strata_keys, ds_posteriors, sds_posteriors,
+                                   ds_cfg["diag_prior"], ds_cfg["off_diag_prior"], sds_cfg["shrinkage_k0"])
 
-    print("judge calibration")
-    calibration = calibration_section(df, votes, sds_labels)
+    print("judge calibration (vs stratified DS and vs majority vote)")
+    calibration = calibration_section(df, votes, sds_labels, mv_labels, labels)
 
     print("leave-one-judge-out (5 standard-DS re-runs)")
-    leave_one_out = leave_one_out_section(votes, ds_labels, ds.DSConfig())
+    leave_one_out = leave_one_out_section(votes, ds_labels, labels, ds.DSConfig(
+        diag_prior=ds_cfg["diag_prior"], off_diag_prior=ds_cfg["off_diag_prior"],
+        class_prior_strength=ds_cfg["class_prior_strength"],
+    ))
 
     print("aggregator comparison")
-    aggregator_comparison = aggregator_comparison_section(method_labels)
-
-    print("mixed-class identifiability caveat")
-    mixed_caveat = mixed_class_caveat(votes, method_labels)
+    aggregator_comparison = aggregator_comparison_section(method_labels, primary)
 
     print("entropy distribution")
-    entropy = entropy_section(df, entropy_norm)
+    entropy = entropy_section(df, entropy_norm, primary)
 
     report = {
+        "label_space": list(labels),
+        "label_space_path": agg_meta["label_space_path"],
+        "identifiability": identifiability,
         "agreement": agreement,
         "confusion": confusion,
         "calibration": calibration,
         "leave_one_out": leave_one_out,
         "aggregator_comparison": aggregator_comparison,
-        "mixed_class_caveat": mixed_caveat,
         "entropy": entropy,
         "unavailable_baselines": unavailable,
     }
@@ -498,7 +578,7 @@ def main():
     Path(args.report_json).write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {args.report_json}")
 
-    Path(args.report_md).write_text(render_markdown(report), encoding="utf-8")
+    Path(args.report_md).write_text(render_markdown(report, labels, agg_meta["label_space_path"]), encoding="utf-8")
     print(f"wrote {args.report_md}")
 
 

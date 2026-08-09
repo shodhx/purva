@@ -1,5 +1,8 @@
-"""Draws the Phase 5 human-annotation samples (PROTOCOL.md §6) from
-stratified Dawid-Skene posteriors:
+"""Draws the Phase 5 human-annotation samples (PROTOCOL.md §6) from the
+validated primary consensus method's posteriors (read from
+purva_aggregated.meta.json's "primary_consensus_method" — not hardcoded to
+stratified DS, since stratified DS is not always the validated method; see
+data/aggregation_report.md section 0):
 
   (a) routed high-entropy set, ~2,000 items
   (b) low-entropy control, 500 items
@@ -107,10 +110,10 @@ def top_n_per_stratum(entropy: np.ndarray, strata: np.ndarray, allocation: np.nd
     return np.array(selected, dtype=int)
 
 
-def write_set(name: str, df: pd.DataFrame, idx: np.ndarray, entropy: np.ndarray, output_dir: Path) -> dict:
+def write_set(name: str, df: pd.DataFrame, idx: np.ndarray, entropy: np.ndarray, entropy_method: str, output_dir: Path) -> dict:
     subset = df.iloc[idx].copy()
     subset_json = subset.copy()
-    subset_json["stratified_ds_entropy_norm"] = entropy[idx]
+    subset_json["consensus_entropy_norm"] = entropy[idx]
 
     jsonl_path = output_dir / f"routing_{name}.jsonl"
     with jsonl_path.open("w", encoding="utf-8") as fh:
@@ -118,7 +121,8 @@ def write_set(name: str, df: pd.DataFrame, idx: np.ndarray, entropy: np.ndarray,
             fh.write(json.dumps({
                 "id": row["id"], "raw_text": row["raw_text"], "cleaned_text": row["cleaned_text"],
                 "source_name": row["source_name"], "register": row["register"], "text_type": row["text_type"],
-                "script": row["script"], "stratified_ds_entropy_norm": float(row["stratified_ds_entropy_norm"]),
+                "script": row["script"], "consensus_entropy_norm": float(row["consensus_entropy_norm"]),
+                "consensus_entropy_method": entropy_method,
             }, ensure_ascii=False) + "\n")
 
     csv_df = subset[["id", "raw_text", "cleaned_text", "source_name", "register", "text_type", "script"]].copy()
@@ -135,6 +139,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--master", default="data/purva_master.parquet")
     ap.add_argument("--aggregated", default="data/purva_aggregated.jsonl")
+    ap.add_argument("--aggregated-meta", default="data/purva_aggregated.meta.json")
     ap.add_argument("--output-dir", default="data")
     ap.add_argument("--n-routed", type=int, default=N_ROUTED)
     ap.add_argument("--n-control", type=int, default=N_CONTROL)
@@ -149,9 +154,13 @@ def main():
     strata, strata_keys = build_strata(df)
     n_strata = len(strata_keys)
 
+    agg_meta = json.loads(Path(args.aggregated_meta).read_text(encoding="utf-8"))
+    primary = agg_meta["primary_consensus_method"]
+    print(f"primary consensus method: {primary}")
+
     print(f"loading {args.aggregated}")
     agg_rows = {json.loads(line)["id"]: json.loads(line) for line in Path(args.aggregated).read_text(encoding="utf-8").splitlines() if line.strip()}
-    entropy = np.array([agg_rows[i]["stratified_dawid_skene"]["entropy_norm"] for i in df["id"]])
+    entropy = np.array([agg_rows[i][primary]["entropy_norm"] for i in df["id"]])
 
     n = len(df)
     excluded = np.zeros(n, dtype=bool)
@@ -189,10 +198,11 @@ def main():
 
     summary = {
         "seed": SEED,
-        "high_entropy": write_set("high_entropy", df, routed_idx, entropy, output_dir),
-        "low_entropy_control": write_set("low_entropy_control", df, control_idx, entropy, output_dir),
-        "uniform_random": write_set("uniform_random", df, random_idx, entropy, output_dir),
-        "reliability_subset": write_set("reliability_subset", df, reliability_idx, entropy, output_dir),
+        "entropy_method": primary,
+        "high_entropy": write_set("high_entropy", df, routed_idx, entropy, primary, output_dir),
+        "low_entropy_control": write_set("low_entropy_control", df, control_idx, entropy, primary, output_dir),
+        "uniform_random": write_set("uniform_random", df, random_idx, entropy, primary, output_dir),
+        "reliability_subset": write_set("reliability_subset", df, reliability_idx, entropy, primary, output_dir),
     }
     meta_path = output_dir / "routing_sets.meta.json"
     meta_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
