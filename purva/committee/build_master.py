@@ -290,6 +290,50 @@ def build_roster_decoding_prompt(sidecars: list[tuple[str, int, dict]]) -> tuple
     return roster, decoding, prompt_info
 
 
+def compute_judge_run_period(sidecars: list[tuple[str, int, dict]], short: str) -> tuple[str | None, str | None]:
+    dates = [
+        meta["date"] for s, _c, meta in sidecars
+        if s == short and meta.get("date") and meta["date"] != "not recorded"
+    ]
+    return (min(dates), max(dates)) if dates else (None, None)
+
+
+def resolve_judge_revisions(roster: dict, sidecars: list[tuple[str, int, dict]]) -> list[str]:
+    """Fetch each judge repo's current commit SHA and lastModified from the
+    HF Hub API and record it alongside — never in place of — the "main"
+    that was actually requested at run time (see PROTOCOL.md CHANGELOG
+    v1.6: these runs were not pinned before the fact). Returns a list of
+    drift warnings for any repo whose lastModified postdates the run."""
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    warnings: list[str] = []
+    for short, info in roster.items():
+        repo_id = info["repo_id"]
+        try:
+            model_info = api.model_info(repo_id)
+        except Exception as e:
+            sys.exit(f"failed to fetch HF model_info for {repo_id} (judge {short}): {e}")
+        resolved_sha = model_info.sha
+        last_modified = model_info.last_modified.isoformat() if model_info.last_modified else None
+        info["revision_requested"] = "main"
+        info["revision_resolved"] = resolved_sha
+        info["repo_last_modified"] = last_modified
+        info["revision_resolution"] = "resolved post-hoc; runs specified 'main' rather than a pinned SHA"
+
+        _earliest, latest_run_date = compute_judge_run_period(sidecars, short)
+        if last_modified and latest_run_date and last_modified[:10] > latest_run_date:
+            msg = (
+                f"judge {short} ({repo_id}): repo lastModified {last_modified} is AFTER "
+                f"the latest recorded run date ({latest_run_date}) — the weights may have "
+                "changed between when we ran and when this SHA was resolved; this SHA "
+                "might not be the one actually used."
+            )
+            info["revision_drift_warning"] = msg
+            warnings.append(msg)
+    return warnings
+
+
 def _sorted_values(vals: set) -> list:
     non_null = sorted(v for v in vals if v is not None)
     return non_null + [None] if None in vals else non_null
@@ -382,11 +426,20 @@ def build_counts(master_rows: list[dict]) -> dict:
 
 
 def read_protocol_version(protocol_path: Path) -> str:
+    """The document header's "Version:" line is the version at initial
+    registration, not the current one — PROTOCOL.md is amended in place with
+    dated CHANGELOG entries (each one bumping the version) rather than by
+    rewriting the header, so the header goes stale the moment the first
+    amendment lands. The CHANGELOG section is append-only and always current,
+    so the highest version listed there is the actual current version."""
     text = protocol_path.read_text(encoding="utf-8")
-    m = re.search(r"^Version:\s*(\S+)", text, re.MULTILINE)
+    m = re.search(r"^##\s*CHANGELOG\s*$(.*)", text, re.MULTILINE | re.DOTALL)
     if not m:
-        sys.exit(f"could not find a 'Version:' line in {protocol_path}")
-    return m.group(1)
+        sys.exit(f"could not find a '## CHANGELOG' section in {protocol_path}")
+    versions = re.findall(r"^-\s*v(\d+(?:\.\d+)*)", m.group(1), re.MULTILINE)
+    if not versions:
+        sys.exit(f"no '- vX.Y' entries found in the CHANGELOG section of {protocol_path}")
+    return max(versions, key=lambda v: tuple(int(p) for p in v.split(".")))
 
 
 def build_provenance(master_rows: list[dict], protocol_path: Path) -> dict:
@@ -431,6 +484,7 @@ def generate_manifest(
 ) -> dict:
     sidecars = load_all_sidecars(committee_dir)
     roster, decoding, prompt_info = build_roster_decoding_prompt(sidecars)
+    drift_warnings = resolve_judge_revisions(roster, sidecars)
 
     manifest = {
         "judges": roster,
@@ -440,9 +494,18 @@ def generate_manifest(
         "counts": build_counts(master_rows),
         "provenance": build_provenance(master_rows, protocol_path),
         "integrity": build_integrity(out_jsonl, out_parquet),
+        "revision_drift_warnings": drift_warnings,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {manifest_path} ({manifest_path.stat().st_size / 1e3:.1f} KB)")
+
+    if drift_warnings:
+        print("\n!!! REVISION DRIFT WARNING !!!")
+        for w in drift_warnings:
+            print(f"  {w}")
+    else:
+        print("no revision drift: every judge repo's lastModified predates our run period")
+
     return manifest
 
 

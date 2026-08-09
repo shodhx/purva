@@ -6,8 +6,26 @@ export): `qwen` = Qwen/Qwen2.5-14B-Instruct-AWQ, `gemma` =
 hugging-quants/gemma-2-9b-it-AWQ-INT4, `llama` =
 hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4, `mistral` =
 casperhansen/mistral-nemo-instruct-2407-awq, `aya` =
-Orion-zhen/aya-expanse-8b-AWQ. See `data/purva_master.meta.json` for the
-full pinned revision/quantization per judge.
+Orion-zhen/aya-expanse-8b-AWQ.
+
+Every run below specified revision `main`, not a pinned commit SHA — a
+real gap against PROTOCOL.md §4's commitment to pinned revisions (see
+CHANGELOG v1.6). The SHAs below were resolved post-hoc via
+`HfApi().model_info(repo_id)`, not pinned before the fact; `main` is what
+was actually requested at run time and is kept as-is in the "Revision"
+column of the table further down, unchanged. Every judge repo's
+`lastModified` predates our run period, so no drift was detected between
+the run and this resolution (recheck if these ever diverge from
+`data/purva_master.meta.json`, which is regenerated on every run of
+`build_master.py` and is the source of truth for this table).
+
+| Judge | Revision requested | Revision resolved | Repo lastModified | Resolution |
+|---|---|---|---|---|
+| aya | main | ff52d61b71c613180581c3a4c6b3b3f636ce79e5 | 2024-10-26T23:26:54+00:00 | resolved post-hoc; runs specified 'main' rather than a pinned SHA |
+| gemma | main | 6e62725da8e92309167814dad7aacc0ed8cb2484 | 2024-10-17T08:31:37+00:00 | resolved post-hoc; runs specified 'main' rather than a pinned SHA |
+| llama | main | db1f81ad4b8c7e39777509fac66c652eb0a52f91 | 2024-08-07T07:29:21+00:00 | resolved post-hoc; runs specified 'main' rather than a pinned SHA |
+| mistral | main | c83b6438e13051ad1c0f5683635705ee83bb8772 | 2024-09-27T07:14:03+00:00 | resolved post-hoc; runs specified 'main' rather than a pinned SHA |
+| qwen | main | 539535859b135b0244c91f3e59816150c8056698 | 2024-10-09T12:26:42+00:00 | resolved post-hoc; runs specified 'main' rather than a pinned SHA |
 
 One row per (chunk, judge) run. Append a new row after every future run —
 do not edit existing rows except to fix a genuine transcription error.

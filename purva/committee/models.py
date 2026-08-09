@@ -40,6 +40,15 @@ class ModelSpec:
     # be confidently verified to exist — see --quant in run_judge.py for the
     # fallback behavior.
     awq_repo_id: str | None = None
+    # Commit SHA for awq_repo_id — separate from `revision` because the two
+    # repos are different HF repos with independent history; resolve_quant()
+    # in run_judge.py returns whichever of the two actually applies to the
+    # repo_id it resolved. Every judge actually run so far used the AWQ path
+    # exclusively (see RUNS.md), so `revision` above was never exercised and
+    # is left at "main" — run_judge.py refuses to run on an unpinned "main"
+    # revision for whichever path IS resolved, so that fallback path staying
+    # unpinned is inert, not a live gap.
+    awq_revision: str | None = None
     # Per-model override: True everywhere except gemma-2-9b, where vLLM's
     # prefix-caching attention kernel (forward_prefix / context_attention_fwd,
     # Triton) crashes on T4/Turing with `OutOfResources: out of resource:
@@ -61,6 +70,11 @@ REGISTRY: dict[str, ModelSpec] = {
         # quantization partners) that publishes the Qwen-AWQ-style official
         # AWQ builds; verified to exist on the Hub.
         awq_repo_id="hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4",
+        # Resolved post-hoc via HfApi().model_info().sha on 2026-08-09 — all
+        # nine chunks actually ran against "main" (see PROTOCOL.md CHANGELOG
+        # v1.6); repo lastModified 2024-08-07, well before every run in
+        # RUNS.md, so this SHA is the one that was actually used.
+        awq_revision="db1f81ad4b8c7e39777509fac66c652eb0a52f91",
     ),
     "gemma-2-9b": ModelSpec(
         repo_id="google/gemma-2-9b-it",
@@ -69,6 +83,11 @@ REGISTRY: dict[str, ModelSpec] = {
         max_model_len=1536,
         dtype="float16",
         awq_repo_id="hugging-quants/gemma-2-9b-it-AWQ-INT4",
+        # Resolved post-hoc via HfApi().model_info().sha on 2026-08-09 — all
+        # nine chunks actually ran against "main" (see PROTOCOL.md CHANGELOG
+        # v1.6); repo lastModified 2024-10-17, well before every run in
+        # RUNS.md, so this SHA is the one that was actually used.
+        awq_revision="6e62725da8e92309167814dad7aacc0ed8cb2484",
         enable_prefix_caching=False,
     ),
     "qwen2.5-14b": ModelSpec(
@@ -77,7 +96,13 @@ REGISTRY: dict[str, ModelSpec] = {
         # awq_repo_id — there is no non-AWQ path in this registry entry for
         # --quant bnb to fall back to.
         repo_id="Qwen/Qwen2.5-14B-Instruct-AWQ",
-        revision="main",  # PIN AT PILOT
+        # Resolved post-hoc via HfApi().model_info().sha on 2026-08-09 — all
+        # nine chunks actually ran against "main" (see PROTOCOL.md CHANGELOG
+        # v1.6); repo lastModified 2024-10-09, well before every run in
+        # RUNS.md, so this SHA is the one that was actually used. Pinned
+        # directly on `revision` (not awq_revision) because repo_id here is
+        # already the AWQ build — there is no separate base repo for this one.
+        revision="539535859b135b0244c91f3e59816150c8056698",
         quantization="awq",
         max_model_len=1536,
         dtype="float16",
@@ -91,6 +116,11 @@ REGISTRY: dict[str, ModelSpec] = {
         # casperhansen is a prolific, widely-used community AWQ quantizer
         # (775k+ downloads/month on this repo at time of writing).
         awq_repo_id="casperhansen/mistral-nemo-instruct-2407-awq",
+        # Resolved post-hoc via HfApi().model_info().sha on 2026-08-09 — all
+        # nine chunks actually ran against "main" (see PROTOCOL.md CHANGELOG
+        # v1.6); repo lastModified 2024-09-27, well before every run in
+        # RUNS.md, so this SHA is the one that was actually used.
+        awq_revision="c83b6438e13051ad1c0f5683635705ee83bb8772",
     ),
     "aya-expanse-8b": ModelSpec(
         repo_id="CohereForAI/aya-expanse-8b",
@@ -103,6 +133,11 @@ REGISTRY: dict[str, ModelSpec] = {
         # download volume, but less established than the hugging-quants/
         # casperhansen repos above — worth a spot-check at pilot time.
         awq_repo_id="Orion-zhen/aya-expanse-8b-AWQ",
+        # Resolved post-hoc via HfApi().model_info().sha on 2026-08-09 — all
+        # nine chunks actually ran against "main" (see PROTOCOL.md CHANGELOG
+        # v1.6); repo lastModified 2024-10-26, well before every run in
+        # RUNS.md, so this SHA is the one that was actually used.
+        awq_revision="ff52d61b71c613180581c3a4c6b3b3f636ce79e5",
     ),
     "indic": ModelSpec(
         # PROTOCOL.md §4 lists "Sarvam-1 or Airavata" for the Indic-specialist

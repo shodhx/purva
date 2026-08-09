@@ -33,7 +33,7 @@ The committee comprises six open-weight models from six distinct organizations, 
 - Aya-Expanse-8B (Cohere)
 - Airavata (AI4Bharat, Indic-specialist) — replaces the originally planned Sarvam-1, which is a base (non-instruction-tuned) model unsuited to structured JSON output; see CHANGELOG v1.3.
 
-The final roster is locked by a 1,000-sentence stratified pilot. Any judge with a JSON-contract failure rate above 5% is dropped from the roster; the minimum roster size is five. All judges use greedy decoding, temperature 0, and seed 42. HuggingFace revisions are pinned in this file at pilot time (to be recorded here once the pilot completes).
+The final roster is locked by a 1,000-sentence stratified pilot. Any judge with a JSON-contract failure rate above 5% is dropped from the roster; the minimum roster size is five. All judges use greedy decoding, temperature 0, and seed 42. Judge runs specified revision `main` rather than a pinned commit SHA at run time; the corresponding commit SHA for each of the five judge repos was resolved post-hoc via the HF Hub API and is recorded, per judge, in `data/purva_master.meta.json` and `RUNS.md`, alongside that repo's `lastModified` timestamp so any drift between the run and the resolution stays visible. `purva/committee/models.py` now pins these resolved SHAs for future runs, and `run_judge.py` refuses to run against an unpinned `main` revision. See CHANGELOG v1.6.
 
 A prompt-sensitivity study is run using 3 prompt paraphrases on a 10% stratified subsample. The full corpus is then labeled using one frozen prompt per judge.
 
@@ -84,3 +84,4 @@ Only open weights are used, with pinned revisions. Prompts are stored verbatim i
 - v1.3 (2026-08-03): §4 roster note — Sarvam-1 replaced by Airavata (instruction-tuned; Sarvam-1 is a base model unsuited to structured JSON output). Revisions to be pinned at pilot completion.
 - v1.4 (2026-08-04): committee labeling scoped to a 20,000-sentence stratified subsample; full corpus released as raw resource.
 - v1.5 (2026-08-05): rationale collected on a 10% stratified subsample rather than the full corpus, for compute budget; schema otherwise unchanged.
+- v1.6 (2026-08-09): §4 deviation recorded — judge runs specified revision "main" rather than pinned commit SHAs; SHAs resolved post-hoc and recorded in data/purva_master.meta.json and RUNS.md with repo lastModified timestamps. Future runs must pin explicit SHAs.

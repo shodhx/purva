@@ -163,18 +163,22 @@ def try_parse(raw_text: str, expect_rationale: bool = True) -> dict | None:
     return obj if validate(obj, expect_rationale) else None
 
 
-def resolve_quant(spec: ModelSpec, quant_mode: str) -> tuple[str, str]:
-    """Return (repo_id, quantization) to actually load for --quant {auto,awq,bnb}."""
+def resolve_quant(spec: ModelSpec, quant_mode: str) -> tuple[str, str, str]:
+    """Return (repo_id, quantization, revision) to actually load for --quant
+    {auto,awq,bnb}. revision comes from awq_revision when the AWQ repo is
+    the one resolved, from revision otherwise — the two are independent HF
+    repos with independent commit history, so a single shared field can't
+    correctly pin both."""
     if quant_mode == "awq":
         if spec.awq_repo_id is not None:
-            return spec.awq_repo_id, "awq"
+            return spec.awq_repo_id, "awq", spec.awq_revision
         if spec.quantization == "awq":
-            return spec.repo_id, "awq"
+            return spec.repo_id, "awq", spec.revision
         raise SystemExit("--quant awq requested but no AWQ repo is configured for this model")
 
     if quant_mode == "bnb":
         if spec.quantization == "bitsandbytes-4bit":
-            return spec.repo_id, "bitsandbytes-4bit"
+            return spec.repo_id, "bitsandbytes-4bit", spec.revision
         raise SystemExit(
             "--quant bnb requested but this model has no bitsandbytes path configured "
             f"(registry quantization={spec.quantization})"
@@ -182,18 +186,29 @@ def resolve_quant(spec: ModelSpec, quant_mode: str) -> tuple[str, str]:
 
     # auto
     if spec.awq_repo_id is not None:
-        return spec.awq_repo_id, "awq"
-    return spec.repo_id, spec.quantization
+        return spec.awq_repo_id, "awq", spec.awq_revision
+    return spec.repo_id, spec.quantization, spec.revision
 
 
-def build_llm(spec: ModelSpec, repo_id: str, quantization: str):
+def require_pinned_revision(repo_id: str, revision: str | None) -> None:
+    """Refuse to proceed on an unpinned revision — "main" (or empty) is a
+    moving pointer, and a run against it stops being reproducible the
+    moment the repo receives a new commit. See PROTOCOL.md CHANGELOG v1.6."""
+    if not revision or revision == "main":
+        raise SystemExit(
+            f"refusing to run {repo_id} on an unpinned revision ({revision!r}) — "
+            "pin an explicit commit SHA in purva/committee/models.py before running"
+        )
+
+
+def build_llm(spec: ModelSpec, repo_id: str, quantization: str, revision: str):
     import torch
     from vllm import LLM
 
     tensor_parallel_size = 2 if torch.cuda.device_count() >= 2 else 1
 
     print(
-        f"[config] repo_id={repo_id} quantization={quantization} "
+        f"[config] repo_id={repo_id} revision={revision} quantization={quantization} "
         f"max_model_len={spec.max_model_len} max_num_seqs={spec.max_num_seqs} "
         f"enable_prefix_caching={spec.enable_prefix_caching} "
         f"tensor_parallel_size={tensor_parallel_size}"
@@ -201,7 +216,7 @@ def build_llm(spec: ModelSpec, repo_id: str, quantization: str):
 
     kwargs = dict(
         model=repo_id,
-        revision=spec.revision,
+        revision=revision,
         tensor_parallel_size=tensor_parallel_size,
         gpu_memory_utilization=0.90,
         max_model_len=spec.max_model_len,
@@ -383,8 +398,9 @@ def main():
         bench_rows = load_rows(bench_path)[: args.bench]
         print(f"bench mode: {len(bench_rows)} sentences from {bench_path}")
 
-        repo_id, quantization = resolve_quant(spec, args.quant)
-        llm = build_llm(spec, repo_id, quantization)
+        repo_id, quantization, revision = resolve_quant(spec, args.quant)
+        require_pinned_revision(repo_id, revision)
+        llm = build_llm(spec, repo_id, quantization, revision)
         sampling_params = build_sampling_params(args.guided, args.rationale)
 
         start = time.time()
@@ -451,8 +467,9 @@ def main():
     if not todo:
         return
 
-    repo_id, quantization = resolve_quant(spec, args.quant)
-    llm = build_llm(spec, repo_id, quantization)
+    repo_id, quantization, revision = resolve_quant(spec, args.quant)
+    require_pinned_revision(repo_id, revision)
+    llm = build_llm(spec, repo_id, quantization, revision)
     sampling_params = build_sampling_params(args.guided, args.rationale)
 
     # Recorded into every output row below. Chunks are processed weeks apart
@@ -461,7 +478,7 @@ def main():
     # they were (see merge_shards.py's check_config_consistency).
     run_config = {
         "repo_id": repo_id,
-        "revision": spec.revision,
+        "revision": revision,
         "quantization": quantization,
         "prompt_file": str(prompt_path),
         "seed": SEED,
@@ -513,7 +530,7 @@ def main():
     meta_path = output_path.with_suffix(".meta.json")
     meta = {
         "repo_id": repo_id,
-        "revision": spec.revision,
+        "revision": revision,
         "quantization": quantization,
         "max_model_len": spec.max_model_len,
         "max_num_seqs": spec.max_num_seqs,
