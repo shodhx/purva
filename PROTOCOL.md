@@ -74,7 +74,7 @@ Human annotators never see model labels or rationales prior to adjudication. Tes
 
 ## 10. Reproducibility
 
-Only open weights are used, with pinned revisions. Prompts are stored verbatim in a `prompts/` directory (to be created in a later phase). Seeds are fixed and decoding is greedy throughout. All code is public in this repository. Zero paid APIs are used anywhere in the pipeline. All GPU work runs on free Kaggle quota.
+Only open weights are used. Judge runs specified revision `main` rather than a pinned commit SHA at run time; the corresponding commit SHA for each judge repo was resolved post-hoc and is recorded, per judge, in `data/purva_master.meta.json` and `RUNS.md` alongside that repo's `lastModified` timestamp (see CHANGELOG v1.6). `purva/committee/models.py` now pins these resolved SHAs and `run_judge.py` refuses to run against an unpinned `main` revision, so future runs are pinned before the fact. Prompts are stored verbatim in a `prompts/` directory (to be created in a later phase). Seeds are fixed and decoding is greedy throughout. All code is public in this repository. Zero paid APIs are used anywhere in the pipeline. All GPU work runs on free Kaggle quota.
 
 ## CHANGELOG
 
