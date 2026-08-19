@@ -10,7 +10,7 @@
 
 vllm==0.6.6.post1
 torch==2.5.1
-transformers==4.47.1
+transformers==5.5.0
 accelerate>=0.33
 huggingface_hub>=0.24
 
