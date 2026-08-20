@@ -8,7 +8,7 @@
 # torch build rather than relying on it, since that preinstalled build is
 # not guaranteed to match vllm's pinned CUDA-12 wheel.
 
-vllm==0.6.6.post1
+vllm==0.26.0
 torch==2.5.1
 transformers==5.5.0
 accelerate>=0.33
