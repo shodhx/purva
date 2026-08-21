@@ -9,7 +9,7 @@
 # not guaranteed to match vllm's pinned CUDA-12 wheel.
 
 vllm==0.26.0
-torch==2.5.1
+torch==2.13.0
 transformers==5.5.0
 accelerate>=0.33
 huggingface_hub>=0.24
