@@ -22,7 +22,7 @@ huggingface_hub>=0.24
 # decoding is used (confirmed against a real Kaggle run; see
 # vllm-project/vllm#16500). vllm's own constraint is only xgrammar>=0.1.6,
 # so an unpinned install grabs whatever is latest and breaks. Pin below 0.1.15.
-xgrammar==0.1.13
+xgrammar==0.1.32
 
 # quantization backends used by purva/committee/models.py REGISTRY entries
 autoawq>=0.2.6      # for the Qwen2.5-14B-Instruct-AWQ judge
