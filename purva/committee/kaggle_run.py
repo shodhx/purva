@@ -55,6 +55,11 @@ KERNEL_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "kaggle" /
 DEFAULT_OWNER = os.environ.get("KAGGLE_OWNER", "")
 KERNEL_SLUG = "purva-judge-committee"
 DATASET_SLUG = "purva-corpus"
+# The Hindi validation set ships in its own dataset rather than purva-corpus:
+# Kaggle dataset *titles* are globally unique, "purva-corpus" is already taken
+# on the platform, and the kernel locates its input by filename anywhere under
+# /kaggle/input — so the slug difference is invisible to the kernel.
+DATASET_SLUG_HINDI = "purva-hindi-validation"
 
 TERMINAL_OK = {"complete"}
 TERMINAL_FAIL = {"error", "cancelacknowledged", "cancelrequested"}
@@ -123,7 +128,8 @@ def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, ration
     meta_path = scratch / "kernel-metadata.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta["id"] = f"{owner}/{KERNEL_SLUG}"
-    meta["dataset_sources"] = [f"{owner}/{DATASET_SLUG}"]
+    dataset_slug = DATASET_SLUG_HINDI if run_mode == "hindi_validation" else DATASET_SLUG
+    meta["dataset_sources"] = [f"{owner}/{dataset_slug}"]
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     return scratch

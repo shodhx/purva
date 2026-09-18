@@ -104,6 +104,8 @@ def build_vote_matrix(rows: list[dict], votes_by_judge: dict[str, dict[str, dict
                 pol = r.get("polarity")
                 if pol not in ("positive", "negative", "neutral", "mixed"):
                     continue
+                if pol == "mixed":
+                    continue  # main-pipeline fallback: a mixed vote is an abstention
                 derived = pol
             votes[i, j] = LABEL_TO_IDX[derived]
     return votes
