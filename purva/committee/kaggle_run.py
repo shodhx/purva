@@ -16,6 +16,14 @@ before moving to the next chunk. The kernel stages that run's output under
 committee/chunk_NN/ so downloaded shards keep their chunk subdirectory
 (merge_shards.py depends on that layout).
 
+--run-mode hindi_validation runs the judge over data/hindi_validation_set.jsonl
+(the Hindi cross-lingual validation set built by purva/validation/) and stages
+output under committee/hindi_validation/ — the shard layout
+purva/validation/evaluate_hindi_validation.py reads. The kernel installs the
+frozen Bhojpuri-era package stack for this mode
+(requirements-kaggle-pinned.txt) so the only difference from the main-corpus
+runs is the input file.
+
 The checked-in kaggle/kernel/main.py is never modified — only the scratch
 copy is patched, so every push is reproducible purely from this script's
 CLI arguments.
@@ -79,19 +87,20 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     raise last_exc
 
 
-def patch_main(text: str, model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int) -> str:
+def patch_main(text: str, model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int, run_mode: str) -> str:
     patched, n1 = re.subn(r'^MODEL_NAME = .*$', f'MODEL_NAME = "{model}"', text, count=1, flags=re.MULTILINE)
     patched, n2 = re.subn(r'^BENCH_N = .*$', f'BENCH_N = {bench}', patched, count=1, flags=re.MULTILINE)
     patched, n3 = re.subn(r'^QUANT = .*$', f'QUANT = "{quant}"', patched, count=1, flags=re.MULTILINE)
     patched, n4 = re.subn(r'^GUIDED = .*$', f'GUIDED = {guided}', patched, count=1, flags=re.MULTILINE)
     patched, n5 = re.subn(r'^RATIONALE = .*$', f'RATIONALE = {rationale}', patched, count=1, flags=re.MULTILINE)
     patched, n6 = re.subn(r'^CHUNK = .*$', f'CHUNK = {chunk}', patched, count=1, flags=re.MULTILINE)
-    if (n1, n2, n3, n4, n5, n6) != (1, 1, 1, 1, 1, 1):
-        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3, n4, n5, n6)}")
+    patched, n7 = re.subn(r'^RUN_MODE = .*$', f'RUN_MODE = "{run_mode}"', patched, count=1, flags=re.MULTILINE)
+    if (n1, n2, n3, n4, n5, n6, n7) != (1, 1, 1, 1, 1, 1, 1):
+        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3, n4, n5, n6, n7)}")
     return patched
 
 
-def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int, owner: str) -> Path:
+def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, rationale: bool, chunk: int, run_mode: str, owner: str) -> Path:
     scratch = Path(tempfile.mkdtemp(prefix="purva_kaggle_push_"))
     for item in KERNEL_TEMPLATE_DIR.iterdir():
         dest = scratch / item.name
@@ -101,7 +110,7 @@ def prepare_scratch_dir(model: str, bench: int, quant: str, guided: bool, ration
             shutil.copy(item, dest)
 
     main_path = scratch / "main.py"
-    patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant, guided, rationale, chunk)
+    patched = patch_main(main_path.read_text(encoding="utf-8"), model, bench, quant, guided, rationale, chunk, run_mode)
     main_path.write_text(patched, encoding="utf-8")
 
     # kernel-metadata.json's "id" determines which account's kernel `kaggle
@@ -217,6 +226,7 @@ def main():
     ap.add_argument("--guided", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--rationale", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--chunk", type=int, default=0, metavar="N", choices=range(0, 10), help="process only data/chunks/chunk_NN.jsonl (1-9); 0 = legacy full/subset run over the default input")
+    ap.add_argument("--run-mode", choices=("corpus", "hindi_validation"), default="corpus", help="corpus = the main-corpus (Bhojpuri) runs; hindi_validation = run the judge over data/hindi_validation_set.jsonl (purva/validation/)")
     ap.add_argument("--timeout", type=int, default=2400, help="max seconds to wait for the kernel to finish")
     ap.add_argument("--poll-interval", type=int, default=20)
     ap.add_argument("--output-dir", default="data/committee")
@@ -228,17 +238,19 @@ def main():
 
     if args.bench and args.chunk:
         ap.error("--bench and --chunk are mutually exclusive — bench mode always runs over data/pilot_set.jsonl")
+    if args.run_mode == "hindi_validation" and (args.bench or args.chunk):
+        ap.error("--run-mode hindi_validation is mutually exclusive with --bench and --chunk")
 
     kernel_ref = f"{args.owner}/{KERNEL_SLUG}"
 
-    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant, args.guided, args.rationale, args.chunk, args.owner)
+    scratch_dir = prepare_scratch_dir(args.model, args.bench, args.quant, args.guided, args.rationale, args.chunk, args.run_mode, args.owner)
     print(f"scratch push dir: {scratch_dir}")
 
     try:
         push(scratch_dir)
         status = poll_status(kernel_ref, args.timeout, args.poll_interval)
 
-        mode = f"bench{args.bench}" if args.bench else (f"chunk{args.chunk:02d}" if args.chunk else "full")
+        mode = f"bench{args.bench}" if args.bench else (f"chunk{args.chunk:02d}" if args.chunk else ("hindi_validation" if args.run_mode == "hindi_validation" else "full"))
         tag = f"{mode}__{args.quant}__g{int(args.guided)}r{int(args.rationale)}"
         fetch_dir = Path(args.output_dir) / "kaggle_out" / f"{args.model}__{tag}"
         fetch_output(kernel_ref, fetch_dir)
@@ -263,6 +275,19 @@ def main():
                     f"copy these into data/committee/chunk_{args.chunk:02d}/ before running merge_shards.py "
                     "(chunk subdirectory structure must be preserved)"
                 )
+            if args.run_mode == "hindi_validation":
+                # Auto-stage into the layout evaluate_hindi_validation.py
+                # expects — the driver is running this mode unattended, and
+                # a manual copy step is one more chance to grab the wrong
+                # file. Destination files are this task's own shards
+                # (data/committee/hindi_validation/), so overwriting a
+                # previous fetch of the same judge is correct behaviour,
+                # not data loss.
+                dest_dir = Path(args.output_dir) / "hindi_validation"
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                for f in shard_files:
+                    shutil.copy(f, dest_dir / f.name)
+                print(f"copied {len(shard_files)} shard file(s) into {dest_dir}")
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 

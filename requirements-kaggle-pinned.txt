@@ -1,0 +1,35 @@
+# FROZEN Kaggle requirements for runs that must stay byte-comparable to the
+# main-corpus (Bhojpuri) committee runs — currently the Hindi cross-lingual
+# validation (purva/validation/, RUN_MODE=hindi_validation in
+# kaggle/kernel/main.py).
+#
+# This file is a verbatim snapshot of requirements-kaggle.txt as it was when
+# every RUNS.md row was produced (vllm 0.6.6.post1 / torch 2.5.1 /
+# transformers 4.47.1 / xgrammar 0.1.13). requirements-kaggle.txt itself has
+# since moved (vllm 0.26.0 / torch 2.13.0 / transformers 5.5.0 /
+# xgrammar 0.1.32 via #3-#6); installing that stack for the Hindi validation
+# would change the decoding stack relative to the Bhojpuri runs and break the
+# "nothing differs except the input file" condition the validation exists to
+# assert. Dependabot: do NOT bump this file — it is frozen on purpose (same
+# argument as prompts/README.md's freeze of the judge prompt). Bump
+# requirements-kaggle.txt instead.
+
+vllm==0.6.6.post1
+torch==2.5.1
+transformers==4.47.1
+accelerate>=0.33
+huggingface_hub>=0.24
+
+# vllm 0.6.6.post1's xgrammar integration calls the low-level C++ binding
+# xgr_core.TokenizerInfo.from_huggingface directly. xgrammar removed that
+# method from the core binding in 0.1.15 (moved to the pure-Python wrapper),
+# which crashes vllm 0.6.6.post1 with AttributeError: type object
+# 'TokenizerInfo' has no attribute 'from_huggingface' the moment guided
+# decoding is used (confirmed against a real Kaggle run; see
+# vllm-project/vllm#16500). vllm's own constraint is only xgrammar>=0.1.6,
+# so an unpinned install grabs whatever is latest and breaks. Pin below 0.1.15.
+xgrammar==0.1.13
+
+# quantization backends used by purva/committee/models.py REGISTRY entries
+autoawq>=0.2.6      # for the Qwen2.5-14B-Instruct-AWQ judge
+bitsandbytes>=0.43  # for the remaining judges (4-bit)

@@ -67,7 +67,20 @@ def resolve_prompt_path(prompt_arg: str) -> Path:
 
 
 def load_rows(path: Path) -> list[dict]:
-    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    # A file may carry a single leading provenance-header object whose keys
+    # are all "_"-prefixed metadata (purva/validation/'s validation sets do
+    # this, so dataset provenance travels with the file when it is pushed to
+    # Kaggle on its own). Skip such pure-metadata objects; data rows always
+    # carry "id". No effect on the main-corpus inputs, which have no header.
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if "id" not in row and all(k.startswith("_") for k in row):
+            continue
+        rows.append(row)
+    return rows
 
 
 def load_done_ids(path: Path) -> set:

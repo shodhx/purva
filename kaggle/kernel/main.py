@@ -21,6 +21,7 @@ QUANT = "auto"  # auto | awq | bnb
 GUIDED = True  # xgrammar guided decoding, constrains output to the judge JSON schema
 RATIONALE = True  # include the rationale field in the schema/prompt
 CHUNK = 0  # 0 = legacy run over INPUT_FILE below; 1-9 = process only data/chunks/chunk_NN.jsonl
+RUN_MODE = "corpus"  # corpus = the Bhojpuri main-corpus runs; hindi_validation = Hindi cross-lingual validation
 # --- END PATCHABLE CONSTANTS ---
 
 REPO_URL = "https://github.com/shodhx/purva.git"
@@ -32,7 +33,8 @@ REPO_URL = "https://github.com/shodhx/purva.git"
 REPO_DIR = Path("/kaggle/tmp/purva")
 KAGGLE_INPUT_ROOT = Path("/kaggle/input")
 INPUT_FILE = "data/label_subset.jsonl"  # legacy full-run input; ignored in bench mode and when CHUNK is set
-DATA_FILES = ["corpus_lid.jsonl", "pilot_set.jsonl", "label_subset.jsonl"] + [
+HINDI_VALIDATION_FILE = "data/hindi_validation_set.jsonl"  # RUN_MODE=hindi_validation input
+DATA_FILES = ["corpus_lid.jsonl", "pilot_set.jsonl", "label_subset.jsonl", "hindi_validation_set.jsonl"] + [
     f"chunk_{n:02d}.jsonl" for n in range(1, 10)
 ]
 
@@ -85,6 +87,8 @@ def find_input_file(name: str) -> Path | None:
 def main():
     if not (0 <= CHUNK <= 9):
         raise ValueError(f"CHUNK must be 0 (legacy) or 1-9, got {CHUNK}")
+    if RUN_MODE not in ("corpus", "hindi_validation"):
+        raise ValueError(f"RUN_MODE must be 'corpus' or 'hindi_validation', got {RUN_MODE!r}")
 
     set_hf_token()
 
@@ -99,7 +103,12 @@ def main():
         shutil.rmtree(REPO_DIR)
     run(["git", "clone", "--depth", "1", REPO_URL, str(REPO_DIR)])
 
-    run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements-kaggle.txt"], cwd=str(REPO_DIR))
+    # RUN_MODE=hindi_validation must install the exact package stack the
+    # Bhojpuri runs used (requirements-kaggle-pinned.txt is a frozen snapshot
+    # of requirements-kaggle.txt as it was for every RUNS.md row), so the
+    # only difference from the Bhojpuri runs is the input file.
+    requirements_file = "requirements-kaggle-pinned.txt" if RUN_MODE == "hindi_validation" else "requirements-kaggle.txt"
+    run([sys.executable, "-m", "pip", "install", "-q", "-r", requirements_file], cwd=str(REPO_DIR))
 
     # Only meaningful once huggingface_hub is actually installed (pinned in
     # requirements-kaggle.txt), hence run after the pip install above.
@@ -120,9 +129,23 @@ def main():
     # the next) instead of the legacy INPUT_FILE. Its output is staged under
     # a chunk_NN/ subdirectory so merge_shards.py can tell which chunk each
     # shard belongs to and detect gaps per (chunk, judge) pair.
-    chunk_tag = f"chunk_{CHUNK:02d}" if CHUNK else None
-    run_input_file = f"data/{chunk_tag}.jsonl" if CHUNK else INPUT_FILE
-    output_dir = f"data/committee/{chunk_tag}" if CHUNK else "data/committee"
+    # RUN_MODE=hindi_validation targets data/hindi_validation_set.jsonl (the
+    # sampled, stratified Hindi gold set from purva/validation/) and stages
+    # output under data/committee/hindi_validation/ — the shard layout
+    # purva/validation/evaluate_hindi_validation.py reads. CHUNK and
+    # RUN_MODE=hindi_validation are mutually exclusive (2,000 items is one
+    # session's work per judge; there is nothing to chunk).
+    if RUN_MODE == "hindi_validation":
+        if CHUNK:
+            raise ValueError("CHUNK and RUN_MODE=hindi_validation are mutually exclusive")
+        if BENCH_N:
+            raise ValueError("BENCH_N and RUN_MODE=hindi_validation are mutually exclusive (bench mode always reads data/pilot_set.jsonl)")
+        run_input_file = HINDI_VALIDATION_FILE
+        output_dir = "data/committee/hindi_validation"
+    else:
+        chunk_tag = f"chunk_{CHUNK:02d}" if CHUNK else None
+        run_input_file = f"data/{chunk_tag}.jsonl" if CHUNK else INPUT_FILE
+        output_dir = f"data/committee/{chunk_tag}" if CHUNK else "data/committee"
 
     cmd = [sys.executable, "-m", "purva.committee.run_judge", "--model", MODEL_NAME, "--quant", QUANT]
     cmd += ["--guided"] if GUIDED else ["--no-guided"]
@@ -144,7 +167,8 @@ def main():
             print(f"staged bench failures {failures_src} -> /kaggle/working/{failures_src.name}")
     else:
         src_dir = data_dir / output_dir[len("data/") :]
-        out_dir = Path("/kaggle/working/committee") / (chunk_tag or "")
+        staging_name = "hindi_validation" if RUN_MODE == "hindi_validation" else (chunk_tag or "")
+        out_dir = Path("/kaggle/working/committee") / staging_name
         out_dir.mkdir(parents=True, exist_ok=True)
         for pattern in ("*.jsonl", "*.meta.json"):
             for f in src_dir.glob(pattern):
