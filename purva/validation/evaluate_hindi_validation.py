@@ -29,6 +29,20 @@ Then, against the Hindi gold labels mapped into our four-class space:
     routing entropy distribution, data/aggregation_report.md §6)
   - per-judge subjectivity rates and their ordering
 
+Because the Hindi gold has no objective class, the full-set accuracies are
+dominated by mapping loss (roughly 61% of pooled judge votes were "objective",
+auto-scored wrong by construction). Three corrected analyses are computed
+alongside the full-set figures and are the headline results of the report:
+
+  - a subjective-only comparable subset: items whose DS consensus label is a
+    polarity class; polarity is scored for every scorer on that subset, with
+    objective votes abstaining and their rate reported alongside so selection
+    effects stay visible
+  - the objective-vote rate per judge and per consensus, as a measured
+    label-scheme incompatibility statistic (Hindi gold cannot evaluate the
+    subjectivity stage)
+  - the entropy routing split recomputed on the subjective-only subset
+
 Outputs data/hindi_validation_report.json (all numbers) and a companion
 data/.hindi_validation_eval.jsonl with per-item posteriors/labels for
 inspection. The markdown report is written by
@@ -254,6 +268,122 @@ def main() -> None:
     print(f"DS acc low={entropy_block['ds_accuracy_low']:.4f} high={entropy_block['ds_accuracy_high']:.4f}")
     print(f"MV acc low={entropy_block['mv_accuracy_low']:.4f} high={entropy_block['mv_accuracy_high']:.4f}")
 
+    # --- subjective-only comparable subset (label-mismatch correction) ---
+    # The Hindi gold has no objective class, so full-set accuracy is dominated by
+    # mapping loss. The comparable evaluation restricts to items whose DS consensus
+    # is a polarity class and scores polarity only: a scorer's "objective" vote on a
+    # subset item is not a polarity judgment and abstains — its rate is reported
+    # alongside so the selection effect stays visible.
+    POLARITY_LABELS = LABELS[1:]
+    ds_subj_idx = [i for i in range(n) if ds_labels[i] in POLARITY_LABELS]
+
+    def score_polarity(labels: list[str | None], idxs: list[int]) -> dict:
+        scored = [(labels[i], gold[i]) for i in idxs if labels[i] in POLARITY_LABELS]
+        n_obj = sum(1 for i in idxs if labels[i] == "objective")
+        n_missing = sum(1 for i in idxs if labels[i] is None)
+        return {
+            "accuracy": accuracy([p for p, _ in scored], [g for _, g in scored]) if scored else None,
+            "n_scored": len(scored),
+            "n_objective_abstained": n_obj,
+            "n_missing": n_missing,
+            "within_subset_objective_vote_rate": (n_obj / len(idxs)) if idxs else None,
+        }
+
+    per_judge_full_obj_rate = {}
+    for judge in judges:
+        col = votes[:, judges.index(judge)]
+        valid = col[col != -1]
+        per_judge_full_obj_rate[judge] = float((valid == LABEL_TO_IDX["objective"]).mean())
+
+    def consensus_obj_rate(labels: list[str]) -> float:
+        return sum(1 for l in labels if l == "objective") / n
+
+    subset_pj = {j: score_polarity(per_judge_labels[j], ds_subj_idx) for j in judges}
+    subset_ds = score_polarity(ds_labels, ds_subj_idx)
+    subset_mv = score_polarity(mv_labels, ds_subj_idx)
+    mv_four_class_on_subset = accuracy([mv_labels[i] for i in ds_subj_idx], [gold[i] for i in ds_subj_idx])
+
+    rank_full = sorted(judges, key=lambda j: -eval_block[j]["accuracy"])
+    rank_sub = sorted(judges, key=lambda j: -(subset_pj[j]["accuracy"] or 0.0))
+
+    subset_block = {
+        "definition": (
+            "items whose Dawid-Skene consensus label is a polarity class (positive/negative/neutral); "
+            "the gold is a polarity label on every item, so within this subset the polarity stage is "
+            "evaluated against real gold"
+        ),
+        "scoring_rule": (
+            "polarity-only: on subset items a scorer's 'objective' vote abstains (it is not a polarity "
+            "judgment); each scorer's within-subset objective-vote rate is reported alongside so the "
+            "selection effect stays visible. The Hindi gold cannot evaluate the subjectivity stage itself."
+        ),
+        "n_items": len(ds_subj_idx),
+        "selection_rate": len(ds_subj_idx) / n,
+        "ds": subset_ds,
+        "mv": subset_mv,
+        "mv_four_class_on_subset": mv_four_class_on_subset,
+        "mv_four_class_note": (
+            "majority vote's 4-class label scored on the same subset with 'objective' counted wrong — "
+            "the like-for-like comparison at matched coverage (DS has no objective predictions on the "
+            "subset by construction)"
+        ),
+        "per_judge": subset_pj,
+        "objective_vote_rate_full_set": {
+            **{j: per_judge_full_obj_rate[j] for j in judges},
+            "ds_consensus": consensus_obj_rate(ds_labels),
+            "mv_consensus": consensus_obj_rate(mv_labels),
+            "note": (
+                "fraction of ALL items on which each judge/consensus predicted 'objective'; the Hindi gold "
+                "has no objective class, so this rate is a label-scheme incompatibility statistic, not an "
+                "error rate"
+            ),
+        },
+        "ranking": {
+            "full_set_by_confounded_accuracy": rank_full,
+            "subjective_only_by_polarity_accuracy": rank_sub,
+            "ranking_survives": rank_full == rank_sub,
+            "aya_rank_full_set": rank_full.index("aya") + 1,
+            "aya_rank_subjective_only": rank_sub.index("aya") + 1,
+        },
+        "ds_minus_mv_gap": {
+            "full_set_accuracy_points": (ds_acc - mv_acc) * 100,
+            "subjective_only_polarity_points": ((subset_ds["accuracy"] or 0) - (subset_mv["accuracy"] or 0)) * 100,
+            "note": (
+                "both aggregators face identical mapping loss, so the full-set gap is unaffected by the "
+                "confound; the subset polarity gap compares different coverage (DS scores every subset "
+                "item, MV abstains where its majority was objective) — mv_four_class_on_subset is the "
+                "matched-coverage comparison"
+            ),
+        },
+    }
+
+    sub_low = [i for i in ds_subj_idx if ent_norm[i] <= ENTROPY_SPLIT]
+    sub_high = [i for i in ds_subj_idx if ent_norm[i] > ENTROPY_SPLIT]
+    subset_entropy = {
+        "threshold_entropy_norm": ENTROPY_SPLIT,
+        "n_low": len(sub_low),
+        "n_high": len(sub_high),
+        "ds": {"low": score_polarity(ds_labels, sub_low), "high": score_polarity(ds_labels, sub_high)},
+        "mv": {"low": score_polarity(mv_labels, sub_low), "high": score_polarity(mv_labels, sub_high)},
+    }
+
+    def fmt(x: float | None) -> str:
+        return "n/a" if x is None else f"{x:.4f}"
+
+    print(f"\n=== subjective-only comparable subset (DS consensus is polarity) ===")
+    print(f"subset n={len(ds_subj_idx)} ({len(ds_subj_idx) / n:.1%} of items)")
+    print(f"DS polarity accuracy: {fmt(subset_ds['accuracy'])} (n_scored={subset_ds['n_scored']})")
+    print(f"MV polarity accuracy: {fmt(subset_mv['accuracy'])} (n_scored={subset_mv['n_scored']}, "
+          f"objective abstained={subset_mv['n_objective_abstained']}); MV 4-class on subset: {fmt(mv_four_class_on_subset)}")
+    for judge in judges:
+        pj = subset_pj[judge]
+        print(f"{judge:8s} subset polarity acc: {fmt(pj['accuracy'])} (n={pj['n_scored']}, "
+              f"obj-rate {fmt(pj['within_subset_objective_vote_rate'])}) | full-set obj rate {per_judge_full_obj_rate[judge]:.3f}")
+    print(f"ranking full set: {rank_full}; subjective-only: {rank_sub}; survives={rank_full == rank_sub}")
+    print(f"subset entropy split: low={len(sub_low)} high={len(sub_high)}; "
+          f"DS {fmt(subset_entropy['ds']['low']['accuracy'])}/{fmt(subset_entropy['ds']['high']['accuracy'])} "
+          f"MV {fmt(subset_entropy['mv']['low']['accuracy'])}/{fmt(subset_entropy['mv']['high']['accuracy'])}")
+
     # --- subjectivity rates (raw shard votes, not the 4-class derivation) ---
     subj_rates: dict = {}
     for judge in judges:
@@ -319,6 +449,8 @@ def main() -> None:
                                "tie_break_rule": "first class in canonical order wins"},
         "ds_vs_mv_label_disagreement": float(np.mean([a != b for a, b in zip(ds_labels, mv_labels)])),
         "entropy_split": entropy_block,
+        "subjective_only_subset": subset_block,
+        "entropy_split_subset": subset_entropy,
         "subjectivity": {"rates": subj_rates, "ordering_by_subjective_rate_desc": subj_order},
         "ds_confusion_vs_gold": confusion(ds_labels, gold),
         "mv_confusion_vs_gold": confusion(mv_labels, gold),
@@ -336,6 +468,7 @@ def main() -> None:
                 "ds_posterior": {LABELS[k]: float(ds_post[i, k]) for k in range(len(LABELS))},
                 "entropy_norm": float(ent_norm[i]),
                 "mv_label": mv_labels[i],
+                "ds_subjective": ds_labels[i] in POLARITY_LABELS,
             }, ensure_ascii=False) + "\n")
     print(f"wrote {out_jsonl}")
 
