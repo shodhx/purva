@@ -22,16 +22,31 @@ Two training sources (purva/benchmark/models.py's BenchmarkModelSpec.training_so
   dev contamination of the eventual gold evaluation is exactly what must be
   avoided here).
 
-  "hindi_baseline" — muril-hindi-baseline. Training data is
-  data/hindi_validation_set.jsonl (the OdiaGenAI Hindi sentiment set
-  downloaded for purva/validation/'s cross-lingual pipeline validation),
-  with NO Bhojpuri data at all — this is the ablation testing whether
-  transfer from a high-resource neighbour language would have sufficed on
-  its own. That file carries no frozen dev split of its own (data/splits.json
+  "hindi_baseline" — muril-hindi-baseline. Training data is a pooled
+  multi-source Hindi sentiment set (default data/hindi_baseline_pool.jsonl,
+  built by purva/benchmark/build_hindi_baseline_pool.py from OdiaGenAI's set
+  plus additional public HF datasets — see that script's docstring for the
+  full source list, sizes, and licences), with NO Bhojpuri data at all —
+  this is the ablation testing whether transfer from a high-resource
+  neighbour language would have sufficed on its own. The gold label space
+  for every pooled source is 3-class polarity with no objective/subjectivity
+  stage, so this model trains a 3-class head over HINDI_LABELS
+  (negative/neutral/positive) rather than forcing a 4-class head with a
+  permanently dead "objective" class — at Bhojpuri evaluation time (a later,
+  separate task), Bhojpuri "objective" items are simply items this baseline
+  structurally cannot predict, not a bug.
+
+  That pooled file carries no frozen dev split of its own (data/splits.json
   is Bhojpuri-specific), so a 10%, gold-label-stratified hold-out (seed 42)
   is carved out here purely for loss monitoring — a deliberate, disclosed
   deviation from the "corpus" flow; see build_hindi_baseline_data()'s
-  returned meta and the printed report.
+  returned meta and the printed report. Unlike "corpus", this hold-out MAY
+  drive an early-stopping decision on epoch count (--early-stopping-patience)
+  when requested: the Bhojpuri gold test set this ablation will eventually be
+  scored against is untouched by this file, so there is no leakage risk in
+  letting Hindi-side dev loss pick when to stop — see main()'s early-stopping
+  block and the meta's "checkpoint_selection" field for what was actually
+  used on a given run.
 """
 
 from __future__ import annotations
@@ -51,6 +66,7 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
     DataCollatorWithPadding,
+    EarlyStoppingCallback,
     Trainer,
     TrainingArguments,
     set_seed,
@@ -63,13 +79,22 @@ from .models import REGISTRY
 # order data/purva_aggregated.meta.json confirms as the primary consensus's
 # actual label space ("label_space_path": "four_class_fallback"). Sliced
 # from the 5-class tuple rather than redeclared, so this can never silently
-# drift from purva/aggregate/_common.py's canonical order.
+# drift from purva/aggregate/_common.py's canonical order. Used only by the
+# "corpus" training source.
 LABELS = _DS_LABELS_5[:4]
 LABEL_TO_IDX = {label: i for i, label in enumerate(LABELS)}
 
+# The "hindi_baseline" training source's label space: every pooled Hindi
+# sentiment source is 3-class polarity with no subjectivity stage, so this
+# is a 3-class head, not the 4-class LABELS above (an "objective" output
+# that never sees a training example is a dead class, not a fair transfer
+# test — see the module docstring and build_hindi_baseline_pool.py).
 HINDI_GOLD_LABELS = ("negative", "neutral", "positive")
+HINDI_LABELS = HINDI_GOLD_LABELS
+HINDI_LABEL_TO_IDX = {label: i for i, label in enumerate(HINDI_LABELS)}
 
 DEFAULT_OUTPUT_DIR = "data/benchmark_models"
+DEFAULT_HINDI_SET = "data/hindi_baseline_pool.jsonl"
 
 
 def load_splits(path: str) -> dict[str, list[str]]:
@@ -149,7 +174,7 @@ def build_hindi_baseline_data(args: argparse.Namespace) -> tuple[list[str], list
     texts = [r["cleaned_text"] for r in rows]
     gold = [r["gold_label"] for r in rows]
     assert set(gold) <= set(HINDI_GOLD_LABELS), f"unexpected gold label(s): {set(gold) - set(HINDI_GOLD_LABELS)}"
-    labels = [LABEL_TO_IDX[g] for g in gold]
+    labels = [HINDI_LABEL_TO_IDX[g] for g in gold]
 
     # 10% stratified (on gold_label) hold-out, seed 42, for loss monitoring
     # only — see module docstring. Deterministic: ids are already in the
@@ -182,24 +207,40 @@ def build_hindi_baseline_data(args: argparse.Namespace) -> tuple[list[str], list
 
     meta = {
         "training_label_source": (
-            f"third-party Hindi gold labels ({header.get('_dataset_repo_id')}), "
-            f"mapped 1:1 onto our 4-class space (negative/neutral/positive unchanged; "
-            "'objective' unused) — NO Bhojpuri data of any kind used in this run"
+            "third-party Hindi gold labels pooled from multiple public HF datasets "
+            f"(see hindi_set_header for the full per-source breakdown; {header.get('_n_sources', '?')} source(s), "
+            f"{header.get('_pooled_total', len(rows))} items after cross-source dedup), trained as a 3-class "
+            "head over HINDI_LABELS (negative/neutral/positive) — no 'objective' class, since none of the "
+            "pooled sources have a subjectivity stage — and NO Bhojpuri data of any kind used in this run"
         ),
         "hindi_set_file": str(args.hindi_set),
         "hindi_set_header": header,
         "n_hindi_items_total": len(rows),
-        "dev_usage": "loss monitoring only, every epoch — never used for checkpoint selection",
-        "checkpoint_selection": "final-epoch checkpoint (no best-on-dev selection)",
+        "dev_usage": "loss monitoring only, every epoch" + (
+            " — drives early stopping on epoch count (see checkpoint_selection), but never picks a checkpoint "
+            "beyond the epoch that stopping rule already selects"
+            if args.early_stopping_patience else " — never used for checkpoint selection"
+        ),
+        "checkpoint_selection": (
+            f"best-epoch by dev loss, early stopping patience={args.early_stopping_patience} "
+            f"(max_epochs={args.epochs})"
+            if args.early_stopping_patience else "final-epoch checkpoint (no best-on-dev selection)"
+        ),
         "test_split_touched": "n/a — this ablation uses no Bhojpuri data, so data/splits.json's test split is not applicable",
         "deviation_notes": [
-            "No frozen dev split exists for this dataset (data/splits.json is Bhojpuri-specific). A 10% "
-            "hold-out, stratified on gold_label with seed 42, was carved from data/hindi_validation_set.jsonl "
-            "purely for loss monitoring, following the same never-select-on-dev discipline as the main runs.",
-            "Gold labels are 3-class polarity (negative/neutral/positive) with no subjectivity stage "
-            "(see data/hindi_validation_report.md's mapping-loss note). Mapped 1:1 onto our 4-class space; "
-            "the 'objective' output class receives zero training examples here and its weights remain "
-            "effectively untrained at initialization.",
+            "No frozen dev split exists for this pooled dataset (data/splits.json is Bhojpuri-specific). A 10% "
+            "hold-out, stratified on gold_label with seed 42, was carved from the pooled file purely for loss "
+            "monitoring.",
+            "Every pooled source is 3-class polarity (negative/neutral/positive) with no subjectivity stage. "
+            "Unlike the earlier single-source run, this is trained as a genuine 3-class head (HINDI_LABELS), "
+            "not a 4-class head with a permanently dead 'objective' class — see the module docstring. At "
+            "Bhojpuri evaluation time (a separate, later task), Bhojpuri gold 'objective' items are items "
+            "this baseline structurally cannot predict; that is a disclosed limitation of the transfer "
+            "approach being tested, not a bug in this run.",
+            "Unlike the 'corpus' training source's fixed-epoch, never-select-on-dev discipline, this run's "
+            "epoch count IS chosen from the Hindi-side dev loss curve (early stopping) when requested via "
+            "--early-stopping-patience — safe here because this dev split has no relationship to the "
+            "Bhojpuri gold test set this ablation will eventually be scored against.",
         ],
     }
     return train_texts, train_labels, dev_texts, dev_labels, train_ids_l, meta
@@ -247,11 +288,19 @@ def main() -> None:
     ap.add_argument("--aggregated", default="data/purva_aggregated.jsonl")
     ap.add_argument("--splits", default="data/splits.json")
     ap.add_argument("--master", default="data/purva_master.parquet")
-    ap.add_argument("--hindi-set", default="data/hindi_validation_set.jsonl")
+    ap.add_argument("--hindi-set", default=DEFAULT_HINDI_SET)
+    ap.add_argument("--early-stopping-patience", type=int, default=0,
+                     help="hindi_baseline only: >0 stops training when dev loss hasn't improved for this many "
+                          "eval epochs, and saves the best (not final) epoch's weights; --epochs then acts as a "
+                          "max-epochs cap. 0 (default) preserves the fixed-epoch, never-select-on-dev behaviour.")
     args = ap.parse_args()
 
     model_key = args.model
     spec = REGISTRY[model_key]
+
+    if args.early_stopping_patience and spec.training_source != "hindi_baseline":
+        raise SystemExit("--early-stopping-patience is only supported for training_source='hindi_baseline' "
+                          "— the 'corpus' models must keep the fixed-epoch, never-select-on-dev discipline")
 
     set_seed(args.seed)
     random.seed(args.seed)
@@ -260,20 +309,22 @@ def main() -> None:
     if spec.training_source == "corpus":
         train_texts, train_labels, dev_texts, dev_labels, train_ids, data_meta = build_corpus_data(args)
         splits_path_for_check = args.splits
+        label_space = LABELS
     elif spec.training_source == "hindi_baseline":
         train_texts, train_labels, dev_texts, dev_labels, train_ids, data_meta = build_hindi_baseline_data(args)
         splits_path_for_check = None
+        label_space = HINDI_LABELS
     else:
         raise SystemExit(f"unknown training_source {spec.training_source!r} for model {model_key!r}")
 
     assert_no_test_leakage(train_ids, splits_path_for_check)
 
-    print(f"model={model_key} repo_id={spec.repo_id} revision={spec.revision}")
+    print(f"model={model_key} repo_id={spec.repo_id} revision={spec.revision} label_space={label_space}")
     print(f"train_set_size={len(train_texts)} dev_set_size={len(dev_texts)}")
 
     tokenizer = AutoTokenizer.from_pretrained(spec.repo_id, revision=spec.revision)
     model = AutoModelForSequenceClassification.from_pretrained(
-        spec.repo_id, revision=spec.revision, num_labels=len(LABELS)
+        spec.repo_id, revision=spec.revision, num_labels=len(label_space)
     )
 
     train_enc = tokenizer(train_texts, truncation=True, max_length=args.max_len)
@@ -290,6 +341,10 @@ def main() -> None:
     if args.fp16 and not use_fp16:
         print("fp16 requested but no CUDA device is available — training in fp32 on CPU instead")
 
+    use_early_stopping = args.early_stopping_patience > 0
+    if use_early_stopping:
+        assert dev_ds is not None, "--early-stopping-patience requires a dev set to monitor"
+
     scratch_dir = Path(tempfile.mkdtemp(prefix=f"purva_bench_trainer_{model_key}_"))
     training_args = TrainingArguments(
         output_dir=str(scratch_dir),
@@ -301,17 +356,27 @@ def main() -> None:
         fp16=use_fp16,
         eval_strategy="epoch" if dev_ds is not None else "no",
         logging_strategy="epoch",
-        save_strategy="no",  # final-epoch weights only; saved manually below
-        load_best_model_at_end=False,  # dev must never drive checkpoint selection
+        # "corpus" (and hindi_baseline with early stopping off): final-epoch
+        # weights only, saved manually below, dev never drives selection.
+        # hindi_baseline WITH early stopping: dev loss IS allowed to pick the
+        # stopping epoch (see module docstring) — save_strategy must then
+        # match eval_strategy so load_best_model_at_end can restore it.
+        save_strategy="epoch" if use_early_stopping else "no",
+        save_total_limit=(args.early_stopping_patience + 1) if use_early_stopping else None,
+        load_best_model_at_end=use_early_stopping,
+        metric_for_best_model="eval_loss" if use_early_stopping else None,
+        greater_is_better=False if use_early_stopping else None,
         report_to=[],
     )
 
+    callbacks = [EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)] if use_early_stopping else []
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=dev_ds,
         data_collator=collator,
+        callbacks=callbacks,
     )
 
     t0 = time.time()
@@ -324,12 +389,17 @@ def main() -> None:
     dev_loss_trajectory = [
         {"epoch": e["epoch"], "eval_loss": e["eval_loss"]} for e in trainer.state.log_history if "eval_loss" in e
     ]
+    chosen_epoch = None
+    if use_early_stopping and dev_loss_trajectory:
+        chosen_epoch = min(dev_loss_trajectory, key=lambda e: e["eval_loss"])["epoch"]
+        print(f"early stopping: ran {len(dev_loss_trajectory)} epoch(s), best dev loss at epoch {chosen_epoch} "
+              f"(patience={args.early_stopping_patience}, max_epochs={args.epochs})")
 
     final_dir = Path(args.output_dir) / model_key
     final_dir.mkdir(parents=True, exist_ok=True)
     trainer.save_model(str(final_dir))
     tokenizer.save_pretrained(str(final_dir))
-    print(f"saved final-epoch checkpoint to {final_dir}")
+    print(f"saved {'best-epoch (early stopping)' if use_early_stopping else 'final-epoch'} checkpoint to {final_dir}")
 
     meta = {
         "model_key": model_key,
@@ -346,11 +416,14 @@ def main() -> None:
         "device": device,
         "train_set_size": len(train_labels),
         "dev_set_size": len(dev_labels),
-        "label_space": list(LABELS),
+        "label_space": list(label_space),
         "train_loss_trajectory": train_loss_trajectory,
         "dev_loss_trajectory": dev_loss_trajectory,
         "final_train_loss": train_loss_trajectory[-1]["loss"] if train_loss_trajectory else None,
         "final_dev_loss": dev_loss_trajectory[-1]["eval_loss"] if dev_loss_trajectory else None,
+        "early_stopping_patience": args.early_stopping_patience,
+        "stopped_epoch": dev_loss_trajectory[-1]["epoch"] if dev_loss_trajectory else None,
+        "chosen_epoch": chosen_epoch,
         "wall_clock_seconds": round(wall_clock_seconds, 1),
         "checkpoint_dir": str(final_dir),
         **data_meta,

@@ -52,7 +52,7 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     raise last_exc
 
 
-def patch_main(text: str, model: str, epochs: int, lr: float, batch_size: int, max_len: int, seed: int, fp16: bool, limit: int) -> str:
+def patch_main(text: str, model: str, epochs: int, lr: float, batch_size: int, max_len: int, seed: int, fp16: bool, limit: int, hindi_set: str, early_stopping_patience: int) -> str:
     patched, n1 = re.subn(r'^MODEL_NAME = .*$', f'MODEL_NAME = "{model}"', text, count=1, flags=re.MULTILINE)
     patched, n2 = re.subn(r'^EPOCHS = .*$', f'EPOCHS = {epochs}', patched, count=1, flags=re.MULTILINE)
     patched, n3 = re.subn(r'^LR = .*$', f'LR = {lr}', patched, count=1, flags=re.MULTILINE)
@@ -61,12 +61,14 @@ def patch_main(text: str, model: str, epochs: int, lr: float, batch_size: int, m
     patched, n6 = re.subn(r'^SEED = .*$', f'SEED = {seed}', patched, count=1, flags=re.MULTILINE)
     patched, n7 = re.subn(r'^FP16 = .*$', f'FP16 = {fp16}', patched, count=1, flags=re.MULTILINE)
     patched, n8 = re.subn(r'^LIMIT = .*$', f'LIMIT = {limit}', patched, count=1, flags=re.MULTILINE)
-    if (n1, n2, n3, n4, n5, n6, n7, n8) != (1, 1, 1, 1, 1, 1, 1, 1):
-        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3, n4, n5, n6, n7, n8)}")
+    patched, n9 = re.subn(r'^HINDI_SET = .*$', f'HINDI_SET = "{hindi_set}"', patched, count=1, flags=re.MULTILINE)
+    patched, n10 = re.subn(r'^EARLY_STOPPING_PATIENCE = .*$', f'EARLY_STOPPING_PATIENCE = {early_stopping_patience}', patched, count=1, flags=re.MULTILINE)
+    if (n1, n2, n3, n4, n5, n6, n7, n8, n9, n10) != (1, 1, 1, 1, 1, 1, 1, 1, 1, 1):
+        raise RuntimeError(f"expected to patch exactly 1 of each constant, got {(n1, n2, n3, n4, n5, n6, n7, n8, n9, n10)}")
     return patched
 
 
-def prepare_scratch_dir(model: str, epochs: int, lr: float, batch_size: int, max_len: int, seed: int, fp16: bool, limit: int, owner: str) -> Path:
+def prepare_scratch_dir(model: str, epochs: int, lr: float, batch_size: int, max_len: int, seed: int, fp16: bool, limit: int, owner: str, hindi_set: str, early_stopping_patience: int) -> Path:
     scratch = Path(tempfile.mkdtemp(prefix="purva_kaggle_bench_push_"))
     for item in KERNEL_TEMPLATE_DIR.iterdir():
         dest = scratch / item.name
@@ -76,7 +78,7 @@ def prepare_scratch_dir(model: str, epochs: int, lr: float, batch_size: int, max
             shutil.copy(item, dest)
 
     main_path = scratch / "main.py"
-    patched = patch_main(main_path.read_text(encoding="utf-8"), model, epochs, lr, batch_size, max_len, seed, fp16, limit)
+    patched = patch_main(main_path.read_text(encoding="utf-8"), model, epochs, lr, batch_size, max_len, seed, fp16, limit, hindi_set, early_stopping_patience)
     main_path.write_text(patched, encoding="utf-8")
 
     meta_path = scratch / "kernel-metadata.json"
@@ -171,6 +173,10 @@ def main():
     ap.add_argument("--poll-interval", type=int, default=20)
     ap.add_argument("--output-dir", default="data/benchmark_models")
     ap.add_argument("--owner", default=DEFAULT_OWNER, help="Kaggle account (defaults to $KAGGLE_OWNER from .env)")
+    ap.add_argument("--hindi-set", default="hindi_validation_set.jsonl",
+                     help="hindi_baseline only: filename (must be in the pushed Kaggle dataset) to train on")
+    ap.add_argument("--early-stopping-patience", type=int, default=0,
+                     help="hindi_baseline only: >0 enables dev-loss-driven early stopping; --epochs becomes a max-epochs cap")
     args = ap.parse_args()
 
     if not args.owner:
@@ -178,7 +184,7 @@ def main():
 
     kernel_ref = f"{args.owner}/{KERNEL_SLUG}"
 
-    scratch_dir = prepare_scratch_dir(args.model, args.epochs, args.lr, args.batch_size, args.max_len, args.seed, args.fp16, args.limit, args.owner)
+    scratch_dir = prepare_scratch_dir(args.model, args.epochs, args.lr, args.batch_size, args.max_len, args.seed, args.fp16, args.limit, args.owner, args.hindi_set, args.early_stopping_patience)
     print(f"scratch push dir: {scratch_dir}")
 
     try:

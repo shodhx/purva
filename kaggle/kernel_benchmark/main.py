@@ -22,6 +22,8 @@ MAX_LEN = 128
 SEED = 42
 FP16 = True
 LIMIT = 0  # 0 = full training set; >0 = debug cap, e.g. for a smoke test
+HINDI_SET = "hindi_validation_set.jsonl"  # hindi_baseline only
+EARLY_STOPPING_PATIENCE = 0  # hindi_baseline only; 0 = disabled (fixed EPOCHS)
 # --- END PATCHABLE CONSTANTS ---
 
 REPO_URL = "https://github.com/shodhx/purva.git"
@@ -30,7 +32,7 @@ REPO_URL = "https://github.com/shodhx/purva.git"
 # kernel "output" whole, including .git internals, if the repo lives there).
 REPO_DIR = Path("/kaggle/tmp/purva")
 KAGGLE_INPUT_ROOT = Path("/kaggle/input")
-DATA_FILES = ["purva_master.parquet", "purva_aggregated.jsonl", "splits.json", "hindi_validation_set.jsonl"]
+DATA_FILES = ["purva_master.parquet", "purva_aggregated.jsonl", "splits.json", HINDI_SET]
 
 
 def run(cmd, **kwargs):
@@ -89,10 +91,13 @@ def main():
         "--max-len", str(MAX_LEN),
         "--seed", str(SEED),
         "--output-dir", "data/benchmark_models",
+        "--hindi-set", f"data/{HINDI_SET}",
     ]
     cmd += ["--fp16"] if FP16 else ["--no-fp16"]
     if LIMIT:
         cmd += ["--limit", str(LIMIT)]
+    if EARLY_STOPPING_PATIENCE:
+        cmd += ["--early-stopping-patience", str(EARLY_STOPPING_PATIENCE)]
 
     run(cmd, cwd=str(REPO_DIR))
 
