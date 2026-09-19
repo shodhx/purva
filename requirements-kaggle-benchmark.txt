@@ -1,0 +1,9 @@
+# Kaggle-only requirements for the benchmark fine-tuning runner
+# (purva/benchmark/train.py). Deliberately does NOT touch torch: Kaggle's
+# GPU image ships a CUDA-matched torch build already, and pinning a
+# different one here (as requirements-kaggle.txt does for vllm's sake) is
+# unnecessary risk for a plain transformers Trainer fine-tune.
+
+transformers==5.8.0
+accelerate>=1.1.0
+huggingface_hub>=0.24

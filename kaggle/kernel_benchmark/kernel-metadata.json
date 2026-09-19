@@ -1,0 +1,16 @@
+{
+  "id": "YOUR_KAGGLE_USERNAME/purva-benchmark-train",
+  "title": "purva-benchmark-train",
+  "code_file": "main.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "machine_shape": "NvidiaTeslaT4",
+  "enable_internet": true,
+  "dataset_sources": ["YOUR_KAGGLE_USERNAME/purva-benchmark-data"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
