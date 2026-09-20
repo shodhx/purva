@@ -1,0 +1,1367 @@
+{
+  "generated": "2026-09-21",
+  "scope": "investigation only; primary aggregator unchanged (run_aggregation.py four-class fallback, standard DS primary)",
+  "meta": {
+    "n_items": 90207,
+    "n_contested_raw": 45,
+    "n_contested_mixed_excluded": 1,
+    "n_contested_used": 44,
+    "contested_human_label_distribution_all_45": {
+      "objective": 22,
+      "negative": 6,
+      "neutral": 6,
+      "positive": 10,
+      "mixed": 1
+    },
+    "contested_human_label_distribution_used": {
+      "objective": 22,
+      "negative": 6,
+      "neutral": 6,
+      "positive": 10
+    },
+    "n_unanimous_raw": 91,
+    "n_unanimous_used": 90,
+    "unanimous_human_label_distribution_used": {
+      "objective": 47,
+      "positive": 26,
+      "negative": 12,
+      "neutral": 5
+    },
+    "ds_config_default": {
+      "diag_prior": 5.0,
+      "off_diag_prior": 0.5,
+      "class_prior_strength": 500.0,
+      "alpha": 1.0,
+      "tol": 1e-06,
+      "max_iter": 500
+    },
+    "note_contested": "45 rows of data/annotate_50_contested_labelled.csv; 4 'unclear' + 1 'not_bhojpuri' rows excluded (data/gold_contested_excluded.jsonl). The 1 'mixed' row is scored against no aggregator (outside the 4-class space) and excluded from accuracy bases, exactly as evaluate_gold.py does for the unanimous set's mixed item."
+  },
+  "contested_set": {
+    "files": {
+      "usable": "data/gold_contested_45.jsonl",
+      "excluded": "data/gold_contested_excluded.jsonl",
+      "source": "data/annotate_50_contested_labelled.csv"
+    },
+    "n_raw": 50,
+    "n_usable": 45,
+    "n_excluded": 5,
+    "exclusion_reasons": {
+      "unclear": 4,
+      "not_bhojpuri": 1
+    },
+    "bases": {
+      "n45": "human-mixed row counted as error for every 4-class system (brief's headline convention)",
+      "n44": "human-mixed row excluded (evaluate_gold.py convention)"
+    }
+  },
+  "verification": {
+    "reproduced": {
+      "dawid_skene_n45": {
+        "acc": 0.2222,
+        "ci95": [
+          0.1111,
+          0.3556
+        ],
+        "n": 45
+      },
+      "majority_vote_n45": {
+        "acc": 0.4444,
+        "ci95": [
+          0.2889,
+          0.5778
+        ],
+        "n": 45
+      },
+      "stratified_ds_n45": {
+        "acc": 0.3111,
+        "ci95": [
+          0.1778,
+          0.4444
+        ],
+        "n": 45
+      },
+      "mace_n45": {
+        "acc": 0.4667,
+        "ci95": [
+          0.3111,
+          0.6
+        ],
+        "n": 45
+      },
+      "individual_judges_n45": {
+        "aya": 0.2222,
+        "gemma": 0.4,
+        "llama": 0.3556,
+        "mistral": 0.3333,
+        "qwen": 0.4
+      }
+    },
+    "mistral_convention_footnote": "brief reports 35.6%; pipeline convention (mixed vote = abstention, same as _common.build_vote_matrix) gives 33.3%. Difference is exactly item 8f666959e8c3eae1 where mistral voted 'mixed' and the human labelled 'mixed' (16/45 vs 15/45). No conclusion changes under either convention."
+  },
+  "task1_zero_vote": {
+    "corpus_wide": {
+      "ds": {
+        "n_zero_vote_total": 465,
+        "rate_overall": 0.005155,
+        "by_assigned_label": {
+          "objective": {
+            "n_assigned": 38200,
+            "n_zero_vote": 4,
+            "share_of_assignments_zero_vote": 0.000105
+          },
+          "positive": {
+            "n_assigned": 25797,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          },
+          "negative": {
+            "n_assigned": 19416,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          },
+          "neutral": {
+            "n_assigned": 6794,
+            "n_zero_vote": 461,
+            "share_of_assignments_zero_vote": 0.067854
+          }
+        },
+        "by_distinctness": {
+          "1": {
+            "n_items": 33198,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          },
+          "2": {
+            "n_items": 43169,
+            "n_zero_vote": 22,
+            "rate": 0.00051
+          },
+          "3": {
+            "n_items": 12199,
+            "n_zero_vote": 439,
+            "rate": 0.035987
+          },
+          "4": {
+            "n_items": 1637,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          }
+        },
+        "by_distinctness_zero_vote_share_of_all_zero_vote": {
+          "1": 0.0,
+          "2": 0.0473,
+          "3": 0.9441,
+          "4": 0.0
+        }
+      },
+      "sds": {
+        "n_zero_vote_total": 12371,
+        "rate_overall": 0.13714,
+        "by_assigned_label": {
+          "objective": {
+            "n_assigned": 28321,
+            "n_zero_vote": 12,
+            "share_of_assignments_zero_vote": 0.000424
+          },
+          "positive": {
+            "n_assigned": 22752,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          },
+          "negative": {
+            "n_assigned": 16994,
+            "n_zero_vote": 47,
+            "share_of_assignments_zero_vote": 0.002766
+          },
+          "neutral": {
+            "n_assigned": 22140,
+            "n_zero_vote": 12312,
+            "share_of_assignments_zero_vote": 0.556098
+          }
+        },
+        "by_distinctness": {
+          "1": {
+            "n_items": 33198,
+            "n_zero_vote": 9,
+            "rate": 0.000271
+          },
+          "2": {
+            "n_items": 43169,
+            "n_zero_vote": 10369,
+            "rate": 0.240196
+          },
+          "3": {
+            "n_items": 12199,
+            "n_zero_vote": 1989,
+            "rate": 0.163046
+          },
+          "4": {
+            "n_items": 1637,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          }
+        },
+        "by_distinctness_zero_vote_share_of_all_zero_vote": {
+          "1": 0.0007,
+          "2": 0.8382,
+          "3": 0.1608,
+          "4": 0.0
+        }
+      },
+      "mv": {
+        "n_zero_vote_total": 4,
+        "rate_overall": 4.4e-05,
+        "by_assigned_label": {
+          "objective": {
+            "n_assigned": 42870,
+            "n_zero_vote": 4,
+            "share_of_assignments_zero_vote": 9.3e-05
+          },
+          "positive": {
+            "n_assigned": 27608,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          },
+          "negative": {
+            "n_assigned": 18996,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          },
+          "neutral": {
+            "n_assigned": 733,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          }
+        },
+        "by_distinctness": {
+          "1": {
+            "n_items": 33198,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          },
+          "2": {
+            "n_items": 43169,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          },
+          "3": {
+            "n_items": 12199,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          },
+          "4": {
+            "n_items": 1637,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          }
+        },
+        "by_distinctness_zero_vote_share_of_all_zero_vote": {
+          "1": 0.0,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0
+        }
+      },
+      "mace": {
+        "n_zero_vote_total": 4,
+        "rate_overall": 4.4e-05,
+        "by_assigned_label": {
+          "objective": {
+            "n_assigned": 47883,
+            "n_zero_vote": 4,
+            "share_of_assignments_zero_vote": 8.4e-05
+          },
+          "positive": {
+            "n_assigned": 25416,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          },
+          "negative": {
+            "n_assigned": 16371,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          },
+          "neutral": {
+            "n_assigned": 537,
+            "n_zero_vote": 0,
+            "share_of_assignments_zero_vote": 0.0
+          }
+        },
+        "by_distinctness": {
+          "1": {
+            "n_items": 33198,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          },
+          "2": {
+            "n_items": 43169,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          },
+          "3": {
+            "n_items": 12199,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          },
+          "4": {
+            "n_items": 1637,
+            "n_zero_vote": 0,
+            "rate": 0.0
+          }
+        },
+        "by_distinctness_zero_vote_share_of_all_zero_vote": {
+          "1": 0.0,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0
+        }
+      }
+    },
+    "ds_by_assigned_label": {
+      "objective": {
+        "n_assigned": 38200,
+        "n_zero_vote": 4,
+        "share_of_assignments_zero_vote": 0.000105
+      },
+      "positive": {
+        "n_assigned": 25797,
+        "n_zero_vote": 0,
+        "share_of_assignments_zero_vote": 0.0
+      },
+      "negative": {
+        "n_assigned": 19416,
+        "n_zero_vote": 0,
+        "share_of_assignments_zero_vote": 0.0
+      },
+      "neutral": {
+        "n_assigned": 6794,
+        "n_zero_vote": 461,
+        "share_of_assignments_zero_vote": 0.067854
+      }
+    },
+    "ds_by_distinctness": {
+      "1": {
+        "n_items": 33198,
+        "n_zero_vote": 0,
+        "rate": 0.0
+      },
+      "2": {
+        "n_items": 43169,
+        "n_zero_vote": 22,
+        "rate": 0.00051
+      },
+      "3": {
+        "n_items": 12199,
+        "n_zero_vote": 439,
+        "rate": 0.035987
+      },
+      "4": {
+        "n_items": 1637,
+        "n_zero_vote": 0,
+        "rate": 0.0
+      }
+    },
+    "contested_zero_vote": {
+      "ds": {
+        "count": 14
+      },
+      "sds": {
+        "count": 8
+      },
+      "mv": {
+        "count": 0
+      },
+      "mace": {
+        "count": 0
+      }
+    },
+    "pattern_2_2_1": {
+      "n_items_contested_45": 14,
+      "n_ds_assigns_neutral": 6,
+      "n_ds_neutral_wrong": 6,
+      "n_human_objective": 9,
+      "n_mv_objective_correct": 9,
+      "per_item": [
+        {
+          "id": "b695c9f25832c7e8",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "objective",
+            "positive",
+            "negative",
+            "objective"
+          ],
+          "ds": "neutral",
+          "mv": "objective",
+          "ds_neu_post": 0.4364
+        },
+        {
+          "id": "4c87e8007ba2d059",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "objective",
+            "positive",
+            "negative",
+            "objective"
+          ],
+          "ds": "neutral",
+          "mv": "objective",
+          "ds_neu_post": 0.4364
+        },
+        {
+          "id": "629e6eef1b7e6517",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "positive",
+            "objective",
+            "negative",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3077
+        },
+        {
+          "id": "dd0e2e8340fde0d2",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "positive",
+            "objective",
+            "negative",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3077
+        },
+        {
+          "id": "a147ec6f0a87b139",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "negative",
+            "objective",
+            "positive",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3943
+        },
+        {
+          "id": "0c1a216b8be240d8",
+          "human": "neutral",
+          "votes": [
+            "positive",
+            "positive",
+            "objective",
+            "negative",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3077
+        },
+        {
+          "id": "ba0810e43ae0abd8",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "positive",
+            "negative",
+            "objective",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3063
+        },
+        {
+          "id": "24b2bb447a2e1bba",
+          "human": "negative",
+          "votes": [
+            "positive",
+            "positive",
+            "objective",
+            "negative",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3077
+        },
+        {
+          "id": "36566cde11b70bf3",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "positive",
+            "negative",
+            "objective",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3063
+        },
+        {
+          "id": "58c04af5fff77e30",
+          "human": "positive",
+          "votes": [
+            "positive",
+            "negative",
+            "objective",
+            "positive",
+            "objective"
+          ],
+          "ds": "positive",
+          "mv": "objective",
+          "ds_neu_post": 0.3943
+        },
+        {
+          "id": "2e74377f8b354036",
+          "human": "negative",
+          "votes": [
+            "positive",
+            "objective",
+            "positive",
+            "negative",
+            "objective"
+          ],
+          "ds": "neutral",
+          "mv": "objective",
+          "ds_neu_post": 0.4364
+        },
+        {
+          "id": "53505d606812896c",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "objective",
+            "positive",
+            "negative",
+            "objective"
+          ],
+          "ds": "neutral",
+          "mv": "objective",
+          "ds_neu_post": 0.4364
+        },
+        {
+          "id": "e6cc9de758614d6a",
+          "human": "objective",
+          "votes": [
+            "positive",
+            "objective",
+            "positive",
+            "negative",
+            "objective"
+          ],
+          "ds": "neutral",
+          "mv": "objective",
+          "ds_neu_post": 0.4364
+        },
+        {
+          "id": "d71c275bfbe7179c",
+          "human": "positive",
+          "votes": [
+            "positive",
+            "objective",
+            "positive",
+            "negative",
+            "objective"
+          ],
+          "ds": "neutral",
+          "mv": "objective",
+          "ds_neu_post": 0.4364
+        }
+      ]
+    },
+    "ds_posterior_on_zero_vote_items": {
+      "mean_posterior_of_assigned_label": 0.4697,
+      "median_posterior_of_assigned_label": 0.4364,
+      "mean_entropy_norm": 0.7983,
+      "n": 465
+    },
+    "empty_vote_items": {
+      "n": 4,
+      "note": "all-aggregator 'objective' zero-vote items are items with no cast votes (index-0 default in every aggregator incl. MV/MACE)"
+    },
+    "verification_3class": {
+      "neutral_votes_cast_on_contested_45": 2,
+      "missing_judge_votes_on_contested_45": 7,
+      "contested_vote_set_counts": {
+        "obj+pos+neg": 30,
+        "obj+pos": 12,
+        "pos+neg+neu": 2,
+        "pos+neg": 1
+      },
+      "ds3_zero_vote_corpus_rate": 0.000333,
+      "ds3_zero_vote_corpus_count": 30,
+      "ds3_zero_vote_on_contested_45": 0,
+      "note": "3-class zero-vote assignments collapse to the empty-vote items only; the catch-all symptom is gone while the accuracy gap to MV remains"
+    }
+  },
+  "task2_three_class": {
+    "label_space": [
+      "objective",
+      "positive",
+      "negative"
+    ],
+    "config": "identical to shipped primary (diag_prior=5.0, off_diag_prior=0.5, class_prior_strength=500, alpha=1.0)",
+    "ds3_run": {
+      "n_iter": 10,
+      "converged": true,
+      "final_log_likelihood": -307965.78078715055,
+      "runtime_seconds": 2.0,
+      "class_prior": {
+        "objective": 0.4302,
+        "positive": 0.3283,
+        "negative": 0.2414
+      },
+      "raw_vote_frequency_3class": {
+        "objective": 0.4562,
+        "positive": 0.31,
+        "negative": 0.2337
+      }
+    },
+    "majority_vote_3class": {
+      "tie_count": 4726,
+      "tie_rate": 0.0524
+    },
+    "contested_n44": {
+      "dawid_skene_3class": {
+        "accuracy": {
+          "acc": 0.2727,
+          "ci95": [
+            0.1364,
+            0.4318
+          ],
+          "n": 44
+        },
+        "macro_f1_3class": {
+          "objective": {
+            "f1": 0.3784,
+            "precision": 0.4667,
+            "recall": 0.3182,
+            "support": 22
+          },
+          "positive": {
+            "f1": 0.1538,
+            "precision": 0.125,
+            "recall": 0.2,
+            "support": 10
+          },
+          "negative": {
+            "f1": 0.3158,
+            "precision": 0.2308,
+            "recall": 0.5,
+            "support": 6
+          },
+          "macro_f1": 0.2827
+        },
+        "note": "gold items with human label 'neutral' can never be correct under a 3-class label space; no principled mapping of neutral to {objective,positive,negative} exists (objective is a subjectivity judgment, positive/negative a polarity judgment — a neutral stance has no nearest neighbour on either axis), so the neutral-void cut is the only fair comparison.",
+        "accuracy_neutral_void": {
+          "acc": 0.3158,
+          "ci95": [
+            0.1842,
+            0.4737
+          ],
+          "n": 38
+        },
+        "n_human_neutral_excluded_in_neutral_void": 6
+      },
+      "majority_vote_3class": {
+        "accuracy": {
+          "acc": 0.4545,
+          "ci95": [
+            0.2955,
+            0.6136
+          ],
+          "n": 44
+        },
+        "macro_f1_3class": {
+          "objective": {
+            "f1": 0.6786,
+            "precision": 0.5588,
+            "recall": 0.8636,
+            "support": 22
+          },
+          "positive": {
+            "f1": 0.1,
+            "precision": 0.1,
+            "recall": 0.1,
+            "support": 10
+          },
+          "negative": {
+            "f1": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "support": 6
+          },
+          "macro_f1": 0.2595
+        },
+        "note": "gold items with human label 'neutral' can never be correct under a 3-class label space; no principled mapping of neutral to {objective,positive,negative} exists (objective is a subjectivity judgment, positive/negative a polarity judgment — a neutral stance has no nearest neighbour on either axis), so the neutral-void cut is the only fair comparison.",
+        "accuracy_neutral_void": {
+          "acc": 0.5263,
+          "ci95": [
+            0.3684,
+            0.6842
+          ],
+          "n": 38
+        },
+        "n_human_neutral_excluded_in_neutral_void": 6
+      },
+      "note_single_vote": "single-vote oracle = majority vote restricted to items with exactly one distinct 3-class vote",
+      "single_vote_items": {
+        "n": 0,
+        "ds3_accuracy_on_them": null,
+        "mv3_equals_the_single_vote_always": true
+      }
+    },
+    "unanimous_n89": {
+      "dawid_skene_3class": {
+        "accuracy": {
+          "acc": 0.8778,
+          "ci95": [
+            0.8111,
+            0.9444
+          ],
+          "n": 90
+        },
+        "macro_f1_3class": {
+          "objective": {
+            "f1": 0.9247,
+            "precision": 0.9348,
+            "recall": 0.9149,
+            "support": 47
+          },
+          "positive": {
+            "f1": 0.9412,
+            "precision": 0.96,
+            "recall": 0.9231,
+            "support": 26
+          },
+          "negative": {
+            "f1": 0.7742,
+            "precision": 0.6316,
+            "recall": 1.0,
+            "support": 12
+          },
+          "macro_f1": 0.88
+        },
+        "note": "gold items with human label 'neutral' can never be correct under a 3-class label space; no principled mapping of neutral to {objective,positive,negative} exists (objective is a subjectivity judgment, positive/negative a polarity judgment — a neutral stance has no nearest neighbour on either axis), so the neutral-void cut is the only fair comparison.",
+        "accuracy_neutral_void": {
+          "acc": 0.9294,
+          "ci95": [
+            0.8706,
+            0.9765
+          ],
+          "n": 85
+        },
+        "n_human_neutral_excluded_in_neutral_void": 5
+      },
+      "majority_vote_3class": {
+        "accuracy": {
+          "acc": 0.8778,
+          "ci95": [
+            0.8111,
+            0.9444
+          ],
+          "n": 90
+        },
+        "macro_f1_3class": {
+          "objective": {
+            "f1": 0.9247,
+            "precision": 0.9348,
+            "recall": 0.9149,
+            "support": 47
+          },
+          "positive": {
+            "f1": 0.9412,
+            "precision": 0.96,
+            "recall": 0.9231,
+            "support": 26
+          },
+          "negative": {
+            "f1": 0.7742,
+            "precision": 0.6316,
+            "recall": 1.0,
+            "support": 12
+          },
+          "macro_f1": 0.88
+        },
+        "note": "gold items with human label 'neutral' can never be correct under a 3-class label space; no principled mapping of neutral to {objective,positive,negative} exists (objective is a subjectivity judgment, positive/negative a polarity judgment — a neutral stance has no nearest neighbour on either axis), so the neutral-void cut is the only fair comparison.",
+        "accuracy_neutral_void": {
+          "acc": 0.9294,
+          "ci95": [
+            0.8706,
+            0.9765
+          ],
+          "n": 85
+        },
+        "n_human_neutral_excluded_in_neutral_void": 5
+      }
+    },
+    "reference_4class_contested_n44": {
+      "ds": {
+        "accuracy_n44": {
+          "acc": 0.2273,
+          "ci95": [
+            0.1136,
+            0.3636
+          ],
+          "n": 44
+        },
+        "accuracy_n44_neutral_void": {
+          "acc": 0.2105,
+          "ci95": [
+            0.1053,
+            0.3684
+          ],
+          "n": 38
+        }
+      },
+      "sds": {
+        "accuracy_n44": {
+          "acc": 0.3182,
+          "ci95": [
+            0.1818,
+            0.4545
+          ],
+          "n": 44
+        },
+        "accuracy_n44_neutral_void": {
+          "acc": 0.2632,
+          "ci95": [
+            0.1316,
+            0.4211
+          ],
+          "n": 38
+        }
+      },
+      "mv": {
+        "accuracy_n44": {
+          "acc": 0.4545,
+          "ci95": [
+            0.2955,
+            0.6136
+          ],
+          "n": 44
+        },
+        "accuracy_n44_neutral_void": {
+          "acc": 0.5263,
+          "ci95": [
+            0.3684,
+            0.6842
+          ],
+          "n": 38
+        }
+      },
+      "mace": {
+        "accuracy_n44": {
+          "acc": 0.4773,
+          "ci95": [
+            0.3182,
+            0.6136
+          ],
+          "n": 44
+        },
+        "accuracy_n44_neutral_void": {
+          "acc": 0.5526,
+          "ci95": [
+            0.3947,
+            0.7105
+          ],
+          "n": 38
+        }
+      }
+    },
+    "reference_4class_unanimous_n89": {
+      "dawid_skene": {
+        "accuracy": {
+          "acc": 0.9111,
+          "ci95": [
+            0.8556,
+            0.9667
+          ],
+          "n": 90
+        }
+      },
+      "majority_vote": {
+        "accuracy": {
+          "acc": 0.9111,
+          "ci95": [
+            0.8556,
+            0.9667
+          ],
+          "n": 90
+        }
+      }
+    }
+  },
+  "task3_prior_sensitivity": {
+    "grid": {
+      "diag_prior": [
+        1.0,
+        2.0,
+        3.0,
+        5.0,
+        8.0,
+        12.0,
+        20.0
+      ],
+      "class_prior_strength": [
+        0.0,
+        50.0,
+        500.0,
+        5000.0
+      ],
+      "off_diag_prior": 0.5
+    },
+    "raw_vote_frequency": {
+      "objective": 0.4366,
+      "positive": 0.2967,
+      "negative": 0.2237,
+      "neutral": 0.043
+    },
+    "runs": [
+      {
+        "diag_prior": 1.0,
+        "class_prior_strength": 0.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 7.4,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 1.0,
+        "class_prior_strength": 50.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.5,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 1.0,
+        "class_prior_strength": 500.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.5,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 1.0,
+        "class_prior_strength": 5000.0,
+        "n_iter": 18,
+        "converged": true,
+        "runtime_seconds": 4.4,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.001253,
+        "zero_vote_count_contested_n44": 1,
+        "neutral_consensus_share": 0.0696,
+        "neutral_ratio_vs_raw": 1.62
+      },
+      {
+        "diag_prior": 2.0,
+        "class_prior_strength": 0.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.5,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 2.0,
+        "class_prior_strength": 50.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 6.2,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 2.0,
+        "class_prior_strength": 500.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 6.8,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 2.0,
+        "class_prior_strength": 5000.0,
+        "n_iter": 18,
+        "converged": true,
+        "runtime_seconds": 5.7,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.001253,
+        "zero_vote_count_contested_n44": 1,
+        "neutral_consensus_share": 0.0696,
+        "neutral_ratio_vs_raw": 1.62
+      },
+      {
+        "diag_prior": 3.0,
+        "class_prior_strength": 0.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 6.3,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 3.0,
+        "class_prior_strength": 50.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.1,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 3.0,
+        "class_prior_strength": 500.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.6,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 3.0,
+        "class_prior_strength": 5000.0,
+        "n_iter": 18,
+        "converged": true,
+        "runtime_seconds": 4.0,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.001253,
+        "zero_vote_count_contested_n44": 1,
+        "neutral_consensus_share": 0.0694,
+        "neutral_ratio_vs_raw": 1.615
+      },
+      {
+        "diag_prior": 5.0,
+        "class_prior_strength": 0.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 4.8,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0754,
+        "neutral_ratio_vs_raw": 1.754
+      },
+      {
+        "diag_prior": 5.0,
+        "class_prior_strength": 50.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 4.7,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0754,
+        "neutral_ratio_vs_raw": 1.754
+      },
+      {
+        "diag_prior": 5.0,
+        "class_prior_strength": 500.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.2,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0753,
+        "neutral_ratio_vs_raw": 1.753
+      },
+      {
+        "diag_prior": 5.0,
+        "class_prior_strength": 5000.0,
+        "n_iter": 18,
+        "converged": true,
+        "runtime_seconds": 4.5,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.001253,
+        "zero_vote_count_contested_n44": 1,
+        "neutral_consensus_share": 0.0694,
+        "neutral_ratio_vs_raw": 1.614
+      },
+      {
+        "diag_prior": 8.0,
+        "class_prior_strength": 0.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.3,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0754,
+        "neutral_ratio_vs_raw": 1.754
+      },
+      {
+        "diag_prior": 8.0,
+        "class_prior_strength": 50.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.4,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0754,
+        "neutral_ratio_vs_raw": 1.754
+      },
+      {
+        "diag_prior": 8.0,
+        "class_prior_strength": 500.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.3,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.0049,
+        "zero_vote_count_contested_n44": 10,
+        "neutral_consensus_share": 0.0751,
+        "neutral_ratio_vs_raw": 1.747
+      },
+      {
+        "diag_prior": 8.0,
+        "class_prior_strength": 5000.0,
+        "n_iter": 18,
+        "converged": true,
+        "runtime_seconds": 4.6,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.001253,
+        "zero_vote_count_contested_n44": 1,
+        "neutral_consensus_share": 0.0692,
+        "neutral_ratio_vs_raw": 1.61
+      },
+      {
+        "diag_prior": 12.0,
+        "class_prior_strength": 0.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.2,
+        "contested_acc_n44": 0.2273,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.005155,
+        "zero_vote_count_contested_n44": 14,
+        "neutral_consensus_share": 0.0754,
+        "neutral_ratio_vs_raw": 1.754
+      },
+      {
+        "diag_prior": 12.0,
+        "class_prior_strength": 50.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.4,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.0049,
+        "zero_vote_count_contested_n44": 10,
+        "neutral_consensus_share": 0.0751,
+        "neutral_ratio_vs_raw": 1.748
+      },
+      {
+        "diag_prior": 12.0,
+        "class_prior_strength": 500.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.9,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.0049,
+        "zero_vote_count_contested_n44": 10,
+        "neutral_consensus_share": 0.075,
+        "neutral_ratio_vs_raw": 1.745
+      },
+      {
+        "diag_prior": 12.0,
+        "class_prior_strength": 5000.0,
+        "n_iter": 17,
+        "converged": true,
+        "runtime_seconds": 4.3,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.001253,
+        "zero_vote_count_contested_n44": 1,
+        "neutral_consensus_share": 0.0692,
+        "neutral_ratio_vs_raw": 1.61
+      },
+      {
+        "diag_prior": 20.0,
+        "class_prior_strength": 0.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.2,
+        "contested_acc_n44": 0.2727,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.004135,
+        "zero_vote_count_contested_n44": 8,
+        "neutral_consensus_share": 0.0743,
+        "neutral_ratio_vs_raw": 1.729
+      },
+      {
+        "diag_prior": 20.0,
+        "class_prior_strength": 50.0,
+        "n_iter": 22,
+        "converged": true,
+        "runtime_seconds": 5.5,
+        "contested_acc_n44": 0.2727,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.004135,
+        "zero_vote_count_contested_n44": 8,
+        "neutral_consensus_share": 0.0742,
+        "neutral_ratio_vs_raw": 1.727
+      },
+      {
+        "diag_prior": 20.0,
+        "class_prior_strength": 500.0,
+        "n_iter": 21,
+        "converged": true,
+        "runtime_seconds": 4.9,
+        "contested_acc_n44": 0.2727,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.004068,
+        "zero_vote_count_contested_n44": 8,
+        "neutral_consensus_share": 0.0741,
+        "neutral_ratio_vs_raw": 1.725
+      },
+      {
+        "diag_prior": 20.0,
+        "class_prior_strength": 5000.0,
+        "n_iter": 17,
+        "converged": true,
+        "runtime_seconds": 4.1,
+        "contested_acc_n44": 0.2955,
+        "unanimous_acc_n89": 0.9111,
+        "zero_vote_rate_corpus": 0.001219,
+        "zero_vote_count_contested_n44": 1,
+        "neutral_consensus_share": 0.069,
+        "neutral_ratio_vs_raw": 1.605
+      }
+    ]
+  },
+  "task4_entropy_error": {
+    "note": "Contested items only (n=44). If entropy does not separate DS's own errors from its correct calls on exactly the items routing sends to humans, the entropy threshold routing claim must be qualified.",
+    "dawid_skene": {
+      "n": 44,
+      "pearson_r_entropy_vs_error01": 0.2619,
+      "spearman_rho_entropy_vs_error": 0.2331,
+      "point_biserial_r": 0.2619,
+      "auc_entropy_predicts_error": 0.6588,
+      "mean_entropy_errors": 0.7614,
+      "mean_entropy_correct": 0.7269,
+      "error_rate_by_entropy_tertile": {
+        "low": {
+          "n": 15,
+          "error_rate": 0.7333
+        },
+        "mid": {
+          "n": 15,
+          "error_rate": 0.7333
+        },
+        "high": {
+          "n": 14,
+          "error_rate": 0.8571
+        }
+      }
+    },
+    "majority_vote": {
+      "n": 44,
+      "pearson_r_entropy_vs_error01": -0.1522,
+      "spearman_rho_entropy_vs_error": -0.0693,
+      "point_biserial_r": -0.1522,
+      "auc_entropy_predicts_error": 0.4646,
+      "mean_entropy_errors": 0.657,
+      "mean_entropy_correct": 0.6945,
+      "error_rate_by_entropy_tertile": {
+        "low": {
+          "n": 17,
+          "error_rate": 0.5882
+        },
+        "mid": {
+          "n": 26,
+          "error_rate": 0.5
+        },
+        "high": {
+          "n": 1,
+          "error_rate": 1.0
+        }
+      }
+    },
+    "interpretation_thresholds": {
+      "auc_0.5": "no discrimination",
+      "auc_below_0.5": "entropy anti-correlates with error on this set (inverted signal)"
+    }
+  },
+  "conclusions": [
+    "neutral acts as a residual class on 3-way split votes: 465 zero-vote assignments corpus-wide (0.52%), 94.4% on 3-distinct-vote items, 99.1% labelled neutral; DS makes 14 zero-vote assignments on the contested 44 and 13 are wrong",
+    "within the 14-item {obj x2, pos x2, neg x1} pattern on the contested set: DS sends 6 to neutral (zero neutral votes cast), all 6 wrong; MV's canonical-order tie-break (objective) is right on 9/9 human-objective items",
+    "removing neutral (3-class DS) collapses the zero-vote symptom to empty-vote items only (30 corpus-wide, 0 on contested) yet contested accuracy improves just 22.7%->27.3% while MV stays at 45.5%: the catch-all is a symptom, not the cause",
+    "28-cell prior sweep: contested accuracy flat in [0.227, 0.295], zero-vote rate flat 0.41-0.52% except under 10x class-prior shrinkage (0.12%) — structural, not tuning",
+    "entropy routing: valid as pool discovery (DS errors concentrate in the routed pool; zero-vote items mean entropy 0.80) but weak within pool (AUC 0.659; tertile error rates 73/73/86%); MV entropy has no signal (AUC 0.465)",
+    "no aggregator or routing change made; candidate fixes (MV/MACE primary on contested items, zero-vote veto, priors fit on adjudicated contested items) listed for the aggregator decision"
+  ],
+  "caveats": [
+    "n=45 contested items; CIs are wide (±15-20 points)",
+    "single human annotator; PROTOCOL §6 three-annotator adjudication not yet run",
+    "contested set drawn from a high-entropy slice selected under the shipped DS posterior (DS-relative by construction)",
+    "per-judge figures use derived votes with mixed-as-abstention; mistral 33.3% here vs 35.6% under vote-credited convention",
+    "4 zero-vote 'objective' assignments shared by all aggregators trace to empty-vote items (no judge cast any vote), an index-0 default artifact"
+  ]
+}
