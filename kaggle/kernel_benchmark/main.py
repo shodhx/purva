@@ -24,6 +24,7 @@ FP16 = True
 LIMIT = 0  # 0 = full training set; >0 = debug cap, e.g. for a smoke test
 HINDI_SET = "hindi_validation_set.jsonl"  # hindi_baseline only
 EARLY_STOPPING_PATIENCE = 0  # hindi_baseline only; 0 = disabled (fixed EPOCHS)
+LABEL_SOURCE = "majority_vote"  # corpus only: which consensus method to train on
 # --- END PATCHABLE CONSTANTS ---
 
 REPO_URL = "https://github.com/shodhx/purva.git"
@@ -92,6 +93,7 @@ def main():
         "--seed", str(SEED),
         "--output-dir", "data/benchmark_models",
         "--hindi-set", f"data/{HINDI_SET}",
+        "--label-source", LABEL_SOURCE,
     ]
     cmd += ["--fp16"] if FP16 else ["--no-fp16"]
     if LIMIT:

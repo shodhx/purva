@@ -10,17 +10,22 @@ warning.
 
 Two training sources (purva/benchmark/models.py's BenchmarkModelSpec.training_source):
 
-  "corpus" — muril, indicbert, xlmr. Training data is the standard
-  (unstratified) Dawid-Skene four-class consensus label
-  (data/purva_aggregated.jsonl's "dawid_skene"."label" — the validated
-  primary method per data/purva_aggregated.meta.json), restricted to
-  data/splits.json's "train" ids. The "dev" ids are tokenized and evaluated
-  every epoch purely to report a loss trajectory; they are NEVER used for
-  checkpoint selection (load_best_model_at_end=False, save_strategy="no"
-  during training, and the final-epoch weights are what gets saved — see
-  PROTOCOL.md §8 and the task instruction this script was written against:
-  dev contamination of the eventual gold evaluation is exactly what must be
-  avoided here).
+  "corpus" — muril, indicbert, xlmr. Training data is a four-class
+  consensus label from data/purva_aggregated.jsonl, restricted to
+  data/splits.json's "train" ids. --label-source selects which consensus
+  method (default "majority_vote": majority vote is the primary aggregator
+  as of the MV-over-DS decision — DS is demoted; "dawid_skene" is retained
+  only to reproduce the earlier pre-decision training data). The "dev" ids
+  are tokenized and evaluated every epoch purely to report a loss
+  trajectory; they are NEVER used for checkpoint selection
+  (load_best_model_at_end=False, save_strategy="no" during training, and
+  the final-epoch weights are what gets saved — see PROTOCOL.md §8 and the
+  task instruction this script was written against: dev contamination of
+  the eventual gold evaluation is exactly what must be avoided here). The
+  Dawid-Skene-trained checkpoints predating the MV-over-DS decision are
+  kept on disk under a "_ds_silver" suffix (e.g. muril_ds_silver) rather
+  than deleted — the DS-trained vs MV-trained comparison is itself
+  reportable.
 
   "hindi_baseline" — muril-hindi-baseline. Training data is a pooled
   multi-source Hindi sentiment set (default data/hindi_baseline_pool.jsonl,
@@ -101,18 +106,26 @@ def load_splits(path: str) -> dict[str, list[str]]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def load_aggregated_ds_labels(path: str) -> dict[str, str]:
-    """{id: standard Dawid-Skene four-class label}, skipping any row whose
-    'dawid_skene' block is absent (there is none in practice — dawid_skene
-    is written for every row by run_aggregation.py — but this fails loudly
-    rather than silently if that ever changes)."""
+LABEL_SOURCES = ("majority_vote", "dawid_skene")
+
+
+def load_aggregated_corpus_labels(path: str, method: str) -> dict[str, str]:
+    """{id: four-class label from purva_aggregated.jsonl[method]['label']},
+    skipping any row whose `method` block is absent (there is none in
+    practice — every consensus method is written for every row by
+    run_aggregation.py — but this fails loudly rather than silently if that
+    ever changes). `method` is one of LABEL_SOURCES: "majority_vote" (the
+    primary aggregator as of the MV-over-DS decision) or "dawid_skene"
+    (retained so the earlier _ds_silver checkpoints' training data can be
+    reproduced)."""
+    assert method in LABEL_SOURCES, f"unknown label source {method!r}, expected one of {LABEL_SOURCES}"
     label_by_id: dict[str, str] = {}
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             if not line.strip():
                 continue
             row = json.loads(line)
-            block = row.get("dawid_skene")
+            block = row.get(method)
             if block is None:
                 continue
             label_by_id[row["id"]] = block["label"]
@@ -126,7 +139,7 @@ def build_corpus_data(args: argparse.Namespace) -> tuple[list[str], list[int], l
     assert train_ids.isdisjoint(test_ids), "data/splits.json itself has train/test overlap — corrupt split file"
     assert train_ids.isdisjoint(dev_ids), "data/splits.json itself has train/dev overlap — corrupt split file"
 
-    label_by_id = load_aggregated_ds_labels(args.aggregated)
+    label_by_id = load_aggregated_corpus_labels(args.aggregated, args.label_source)
     master = pd.read_parquet(args.master, columns=["id", "cleaned_text"])
     text_by_id = dict(zip(master["id"], master["cleaned_text"]))
 
@@ -148,10 +161,15 @@ def build_corpus_data(args: argparse.Namespace) -> tuple[list[str], list[int], l
         train_texts = train_texts[: args.limit]
         train_labels = train_labels[: args.limit]
 
+    method_desc = {
+        "majority_vote": "unstratified majority-vote",
+        "dawid_skene": "standard (unstratified) Dawid-Skene",
+    }[args.label_source]
     meta = {
+        "label_source": args.label_source,
         "training_label_source": (
-            "standard (unstratified) Dawid-Skene four-class consensus label, "
-            f"{args.aggregated}['dawid_skene']['label'], restricted to {args.splits}['train']"
+            f"{method_desc} four-class consensus label, "
+            f"{args.aggregated}['{args.label_source}']['label'], restricted to {args.splits}['train']"
         ),
         "splits_file": str(args.splits),
         "n_train_ids_total": len(train_ids),
@@ -160,7 +178,16 @@ def build_corpus_data(args: argparse.Namespace) -> tuple[list[str], list[int], l
         "dev_usage": "loss monitoring only, every epoch — never used for checkpoint selection",
         "checkpoint_selection": "final-epoch checkpoint (no best-on-dev selection)",
         "test_split_touched": False,
-        "deviation_notes": [],
+        "deviation_notes": (
+            []
+            if args.label_source == "majority_vote"
+            else [
+                "Trained on Dawid-Skene consensus labels for comparison against the majority-vote-trained "
+                "checkpoint of the same model key — majority vote is the primary aggregator as of the "
+                "MV-over-DS decision; this run reproduces the earlier (pre-decision) training data and its "
+                "checkpoint is kept under the _ds_silver suffix, not at the model's primary key."
+            ]
+        ),
     }
     return train_texts, train_labels, dev_texts, dev_labels, train_ids_l, meta
 
@@ -289,6 +316,10 @@ def main() -> None:
     ap.add_argument("--splits", default="data/splits.json")
     ap.add_argument("--master", default="data/purva_master.parquet")
     ap.add_argument("--hindi-set", default=DEFAULT_HINDI_SET)
+    ap.add_argument("--label-source", default="majority_vote", choices=list(LABEL_SOURCES),
+                     help="corpus only: which purva_aggregated.jsonl consensus method to train on. "
+                          "majority_vote (default) is the primary aggregator as of the MV-over-DS decision; "
+                          "dawid_skene reproduces the earlier pre-decision training data.")
     ap.add_argument("--early-stopping-patience", type=int, default=0,
                      help="hindi_baseline only: >0 stops training when dev loss hasn't improved for this many "
                           "eval epochs, and saves the best (not final) epoch's weights; --epochs then acts as a "
